@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Goku Runner: Infinite Hover</title>
+<style>
+  body {
+    margin: 0;
+    padding: 0;
+    background-color: #111;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    font-family: 'Press Start 2P', 'Courier New', Courier, monospace;
+    overflow: hidden;
+    user-select: none;
+  }
+  #game-container {
+    position: relative;
+    box-shadow: 0 0 25px rgba(0, 0, 0, 0.9);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  canvas {
+    background-color: #1a1a2e;
+    display: block;
+  }
+  #ui {
+    position: absolute;
+    top: 20px;
+    width: 100%;
+    text-align: center;
+    pointer-events: none;
+  }
+  #score-display {
+    color: #fff;
+    font-size: 28px;
+    font-weight: bold;
+    text-shadow: 2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000;
+  }
+  #message-display {
+    color: #ffd700;
+    font-size: 20px;
+    margin-top: 10px;
+    text-shadow: 2px 2px 0 #000;
+    font-weight: bold;
+    opacity: 0;
+    transition: opacity 0.5s;
+  }
+  #game-over {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.85);
+    color: #fff;
+    display: none;
+    z-index: 10;
+  }
+  #game-over h1 {
+    margin: 0 0 10px 0;
+    font-size: 52px;
+    color: #ff3333;
+    text-shadow: 4px 4px 0 #000;
+    letter-spacing: 2px;
+  }
+  #game-over p {
+    font-size: 28px;
+    margin: 10px 0 30px 0;
+    text-shadow: 2px 2px 0 #000;
+  }
+  button {
+    background: #e67e22;
+    color: #fff;
+    border: 3px solid #fff;
+    padding: 15px 30px;
+    font-size: 24px;
+    cursor: pointer;
+    font-family: inherit;
+    border-radius: 8px;
+    transition: all 0.2s;
+    box-shadow: 0 6px 0 #d35400, 0 10px 15px rgba(0,0,0,0.5);
+  }
+  button:hover {
+    background: #f39c12;
+    transform: translateY(2px);
+    box-shadow: 0 4px 0 #d35400, 0 8px 10px rgba(0,0,0,0.5);
+  }
+  button:active {
+    transform: translateY(6px);
+    box-shadow: 0 0px 0 #d35400, 0 4px 6px rgba(0,0,0,0.5);
+  }
+  #instructions {
+    position: absolute;
+    bottom: 20px;
+    width: 100%;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 14px;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+
+<div id="game-container">
+  <div id="ui">
+    <div id="score-display">Score: 0</div>
+    <div id="message-display">KAIOKEN!</div>
+  </div>
+  
+  <div id="game-over">
+    <h1>GAME OVER</h1>
+    <p id="final-score">Score: 0</p>
+    <button id="restart-btn">Try Again</button>
+  </div>
+
+  <div id="instructions">Tap SPACE or LEFT CLICK to Jump & Hover</div>
+
+  <canvas id="gameCanvas" width="900" height="450"></canvas>
+</div>
+
+<script>
+  // Web Audio API for synthesizing retro DBZ sound effects without external files
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  let audioCtx = null;
+  
+  function initAudio() {
+    if (!audioCtx) {
+      audioCtx = new AudioContext();
+    }
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+  }
+
+  const sfx = {
+    playJump: () => {
+      if(!audioCtx) return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.type = 'sine'; // Quick clear swoop
+      osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(700, audioCtx.currentTime + 0.15);
+      gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.15);
+    },
+    playRun: () => {
+      if(!audioCtx) return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.type = 'triangle'; // Light tap
+      osc.frequency.setValueAtTime(100, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.05);
+      gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.05);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.05);
+    },
+    playKaioken: () => {
+      if(!audioCtx) return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.type = 'sawtooth'; // Fiery rising pulse
+      osc.frequency.setValueAtTime(60, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(300, audioCtx.currentTime + 0.6);
+      gain.gain.setValueAtTime(0, audioCtx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.15, audioCtx.currentTime + 0.3);
+      gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.6);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.6);
+    },
+    playSSJ: () => {
+      if(!audioCtx) return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.type = 'square'; // Aggressive explosive surge
+      osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(900, audioCtx.currentTime + 1.0);
+      gain.gain.setValueAtTime(0, audioCtx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.15, audioCtx.currentTime + 0.1);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 1.0);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 1.0);
+    },
+    playDeath: () => {
+      if(!audioCtx) return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(200, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.5);
+      gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.5);
+    }
+  };
+
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  const scoreDisplay = document.getElementById('score-display');
+  const messageDisplay = document.getElementById('message-display');
+  const gameOverScreen = document.getElementById('game-over');
+  const finalScoreDisplay = document.getElementById('final-score');
+  const restartBtn = document.getElementById('restart-btn');
+
+  // Game configuration
+  const GROUND_Y = 360;
+  const GRAVITY = 0.55;
+  const JUMP_STRENGTH = -7.5;
+  
+  let frames = 0;
+  let score = 0;
+  let gameSpeed = 5;
+  let isGameOver = false;
+  let animationId;
+  let currentFormMessage = '';
+  let messageTimer = 0;
+
+  // Game Entities
+  let player;
+  let obstacles = [];
+  let pits = [];
+  let particles = [];
+  let backgroundStars = [];
+
+  class Player {
+    constructor() {
+      this.width = 32;
+      this.height = 46;
+      this.x = 100;
+      this.y = GROUND_Y - this.height;
+      this.vy = 0;
+      this.isGrounded = false;
+      this.form = 'normal'; // normal, kaioken, ssj
+      this.animTick = 0;
+    }
+
+    update() {
+      this.vy += GRAVITY;
+      this.y += this.vy;
+      this.animTick++;
+
+      // Prevent going off screen top
+      if (this.y < 0) {
+        this.y = 0;
+        this.vy = 0;
+      }
+
+      // Check if player is over a pit
+      let overPit = false;
+      for (let pit of pits) {
+        if (this.x + this.width > pit.x && this.x < pit.x + pit.width) {
+          overPit = true;
+          break;
+        }
+      }
+
+      // Ground collision
+      if (!overPit && this.y + this.height >= GROUND_Y && this.vy >= 0) {
+        this.y = GROUND_Y - this.height;
+        this.vy = 0;
+        this.isGrounded = true;
+        if (this.animTick % 10 === 0 && !isGameOver) {
+          sfx.playRun();
+        }
+      } else {
+        this.isGrounded = false;
+      }
+
+      // Falling down pit = death
+      if (this.y > canvas.height + 50) {
+        triggerGameOver();
+      }
+
+      // Form updates
+      if (score >= 26 && this.form !== 'ssj') {
+        this.form = 'ssj';
+        showMessage("SUPER SAIYAN!");
+        sfx.playSSJ();
+      } else if (score >= 11 && score < 26 && this.form !== 'kaioken') {
+        this.form = 'kaioken';
+        showMessage("KAIOKEN x10!");
+        sfx.playKaioken();
+      }
+    }
+
+    draw(ctx) {
+      // Draw Aura
+      if (this.form === 'kaioken') {
+        ctx.fillStyle = 'rgba(255, 30, 30, 0.4)';
+        let auraSize = Math.sin(this.animTick * 0.2) * 5 + 10;
+        ctx.beginPath();
+        ctx.ellipse(this.x + this.width/2, this.y + this.height/2, this.width/2 + auraSize, this.height/2 + auraSize, 0, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (this.form === 'ssj') {
+        ctx.fillStyle = 'rgba(255, 255, 50, 0.5)';
+        let auraSize = Math.sin(this.animTick * 0.3) * 8 + 15;
+        ctx.beginPath();
+        ctx.ellipse(this.x + this.width/2, this.y + this.height/2, this.width/2 + auraSize, this.height/2 + auraSize, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Electrical sparks
+        if (this.animTick % 4 === 0) {
+          ctx.strokeStyle = '#fff';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          let sx = this.x - 10 + Math.random() * (this.width + 20);
+          let sy = this.y - 10 + Math.random() * (this.height + 20);
+          ctx.moveTo(sx, sy);
+          ctx.lineTo(sx + (Math.random() - 0.5) * 30, sy + (Math.random() - 0.5) * 30);
+          ctx.stroke();
+        }
+      }
+
+      // Draw Retro Goku Base
+      ctx.fillStyle = '#fada5e'; // Skin tone
+      ctx.fillRect(this.x + 8, this.y + 10, 16, 12); // Face
+
+      // Hair
+      ctx.fillStyle = this.form === 'ssj' ? '#ffd700' : '#000';
+      ctx.beginPath();
+      if (this.form === 'ssj') {
+        // SSJ Spiky Hair (Tall and wide)
+        ctx.moveTo(this.x, this.y + 12);
+        ctx.lineTo(this.x - 8, this.y - 8);
+        ctx.lineTo(this.x + 5, this.y + 2);
+        ctx.lineTo(this.x + 8, this.y - 18);
+        ctx.lineTo(this.x + 16, this.y - 2);
+        ctx.lineTo(this.x + 24, this.y - 18);
+        ctx.lineTo(this.x + 26, this.y + 2);
+        ctx.lineTo(this.x + 40, this.y - 8);
+        ctx.lineTo(this.x + 32, this.y + 12);
+      } else {
+        // Normal Hair (Milder spikes)
+        ctx.moveTo(this.x - 2, this.y + 12);
+        ctx.lineTo(this.x - 12, this.y + 5);
+        ctx.lineTo(this.x + 4, this.y + 2);
+        ctx.lineTo(this.x + 12, this.y - 6);
+        ctx.lineTo(this.x + 20, this.y + 2);
+        ctx.lineTo(this.x + 34, this.y + 5);
+        ctx.lineTo(this.x + 30, this.y + 12);
+      }
+      ctx.fill();
+
+      // Body (Orange Gi)
+      ctx.fillStyle = '#ff7f00';
+      ctx.fillRect(this.x + 6, this.y + 22, 20, 14);
+      
+      // Blue undershirt
+      ctx.fillStyle = '#0000ff';
+      ctx.fillRect(this.x + 10, this.y + 22, 12, 5);
+
+      // Belt
+      ctx.fillStyle = '#0000ff';
+      ctx.fillRect(this.x + 5, this.y + 36, 22, 4);
+
+      // Legs / Pants
+      ctx.fillStyle = '#ff7f00';
+      // Animate walking if grounded
+      if (this.isGrounded && !isGameOver) {
+        if (Math.floor(this.animTick / 10) % 2 === 0) {
+          ctx.fillRect(this.x + 6, this.y + 40, 8, 6);
+          ctx.fillRect(this.x + 20, this.y + 40, 8, 6);
+        } else {
+          ctx.fillRect(this.x + 10, this.y + 40, 8, 6);
+          ctx.fillRect(this.x + 16, this.y + 40, 8, 6);
+        }
+      } else {
+        // Jumping legs
+        ctx.fillRect(this.x + 8, this.y + 40, 8, 6);
+        ctx.fillRect(this.x + 16, this.y + 38, 8, 6);
+      }
+    }
+  }
+
+  class Obstacle {
+    constructor() {
+      this.width = 45 + Math.random() * 30;
+      this.x = canvas.width;
+      this.type = Math.random() > 0.5 ? 'top' : 'bottom';
+      this.height = 100 + Math.random() * 120; 
+      if (this.type === 'top') {
+        this.y = 0;
+      } else {
+        this.y = GROUND_Y - this.height;
+      }
+      this.passed = false;
+      this.colorHue = Math.random() * 60 + 260; // purple-ish
+    }
+
+    update() {
+      this.x -= gameSpeed;
+    }
+
+    draw(ctx) {
+      let grad = ctx.createLinearGradient(this.x, this.y, this.x + this.width, this.y);
+      grad.addColorStop(0, `hsl(${this.colorHue}, 100%, 40%)`);
+      grad.addColorStop(0.5, `hsl(${this.colorHue}, 100%, 80%)`);
+      grad.addColorStop(1, `hsl(${this.colorHue}, 100%, 40%)`);
+      
+      ctx.fillStyle = grad;
+      ctx.fillRect(this.x, this.y, this.width, this.height);
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(this.x, this.y, this.width, this.height);
+
+      // Energy core line
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(this.x + this.width/2 - 2, this.y, 4, this.height);
+    }
+  }
+
+  class Pit {
+    constructor() {
+      this.width = 180 + Math.random() * 120; // Needs significant hover to cross
+      this.x = canvas.width;
+      this.passed = false;
+    }
+
+    update() {
+      this.x -= gameSpeed;
+    }
+
+    draw(ctx) {
+      // Draw void gradient
+      let grad = ctx.createLinearGradient(0, GROUND_Y, 0, canvas.height);
+      grad.addColorStop(0, '#000');
+      grad.addColorStop(1, '#111');
+      ctx.fillStyle = grad;
+      ctx.fillRect(this.x, GROUND_Y, this.width, canvas.height - GROUND_Y);
+
+      // Lava particles effect at the bottom could be added, but simple void works well
+    }
+  }
+
+  class Particle {
+    constructor(x, y, color = null) {
+      this.x = x;
+      this.y = y;
+      this.vx = (Math.random() - 0.5) * 8;
+      this.vy = (Math.random() - 0.5) * 8;
+      this.life = 40;
+      this.maxLife = 40;
+      this.color = color || (Math.random() > 0.5 ? '#fff' : '#ffcc00');
+      this.size = Math.random() * 4 + 2;
+    }
+
+    update() {
+      this.x += this.vx;
+      this.y += this.vy;
+      this.life--;
+    }
+
+    draw(ctx) {
+      ctx.fillStyle = this.color;
+      ctx.globalAlpha = Math.max(0, this.life / this.maxLife);
+      ctx.fillRect(this.x, this.y, this.size, this.size);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // --- Core Game Functions ---
+
+  function jump() {
+    initAudio();
+    if (isGameOver) return;
+    player.vy = JUMP_STRENGTH;
+    player.isGrounded = false;
+    sfx.playJump();
+    
+    // Spawn small jump/hover particles
+    if (player.form === 'kaioken') {
+      particles.push(new Particle(player.x + 15, player.y + player.height, '#ff3333'));
+    } else if (player.form === 'ssj') {
+      particles.push(new Particle(player.x + 15, player.y + player.height, '#ffff33'));
+    } else {
+      particles.push(new Particle(player.x + 15, player.y + player.height, '#ffffff'));
+    }
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space') {
+      e.preventDefault(); // Stop scrolling
+      jump();
+    }
+  });
+
+  window.addEventListener('mousedown', (e) => {
+    if (e.target !== restartBtn) {
+      jump();
+    }
+  });
+
+  restartBtn.addEventListener('click', () => {
+    initGame();
+  });
+
+  function showMessage(text) {
+    messageDisplay.innerText = text;
+    messageDisplay.style.opacity = 1;
+    messageTimer = 120; // 2 seconds at 60fps
+  }
+
+  function initEnvironment() {
+    backgroundStars = [];
+    for(let i = 0; i < 70; i++) {
+      backgroundStars.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * GROUND_Y,
+        size: Math.random() * 2.5,
+        speed: Math.random() * 2 + 0.5
+      });
+    }
+  }
+
+  function initGame() {
+    player = new Player();
+    obstacles = [];
+    pits = [];
+    particles = [];
+    frames = 0;
+    score = 0;
+    gameSpeed = 5.5;
+    isGameOver = false;
+    
+    gameOverScreen.style.display = 'none';
+    scoreDisplay.innerText = 'Score: 0';
+    messageDisplay.style.opacity = 0;
+    
+    initEnvironment();
+    
+    if(animationId) cancelAnimationFrame(animationId);
+    updateGame();
+  }
+
+  function spawnObstacles() {
+    // Spawn rate speeds up as game goes faster
+    let spawnRate = Math.max(50, Math.floor(130 - score * 2.5));
+    
+    if (frames % spawnRate === 0 && frames > 30) {
+      // 35% chance for a pit, 65% for an energy pillar
+      if (Math.random() < 0.35) {
+        // Make sure previous isn't also a massive pit too close
+        if (pits.length === 0 || canvas.width - (pits[pits.length-1].x + pits[pits.length-1].width) > 200) {
+          pits.push(new Pit());
+        }
+      } else {
+        obstacles.push(new Obstacle());
+      }
+    }
+  }
+
+  function handleCollisions() {
+    // Pillars
+    for (let obs of obstacles) {
+      // Hitbox padding for more forgiving gameplay
+      const padding = 5; 
+      if (player.x + padding < obs.x + obs.width &&
+          player.x + player.width - padding > obs.x &&
+          player.y + padding < obs.y + obs.height &&
+          player.y + player.height - padding > obs.y) {
+          triggerGameOver();
+      }
+
+      // Check pass to increment score
+      if (obs.x + obs.width < player.x && !obs.passed) {
+        obs.passed = true;
+        score++;
+        updateDifficulty();
+      }
+    }
+
+    // Pits pass check
+    for (let pit of pits) {
+      if (pit.x + pit.width < player.x && !pit.passed) {
+        pit.passed = true;
+        score++;
+        updateDifficulty();
+      }
+    }
+  }
+
+  function updateDifficulty() {
+    scoreDisplay.innerText = 'Score: ' + score;
+    
+    if (score >= 26) {
+      gameSpeed = 9.5 + (score - 26) * 0.15;
+    } else if (score >= 11) {
+      gameSpeed = 7.5 + (score - 11) * 0.12;
+    } else {
+      gameSpeed = 5.5 + score * 0.1;
+    }
+  }
+
+  function triggerGameOver() {
+    if (isGameOver) return;
+    isGameOver = true;
+    finalScoreDisplay.innerText = 'Score: ' + score;
+    gameOverScreen.style.display = 'flex';
+    sfx.playDeath();
+
+    // Massive particle explosion
+    for(let i=0; i<50; i++){
+      particles.push(new Particle(player.x + player.width/2, player.y + player.height/2, '#ff0000'));
+      particles.push(new Particle(player.x + player.width/2, player.y + player.height/2, '#ffff00'));
+    }
+  }
+
+  function updateGame() {
+    if (isGameOver) {
+      drawGame();
+      // Continue updating particles even when game over
+      for (let i = particles.length - 1; i >= 0; i--) {
+        particles[i].update();
+        if (particles[i].life <= 0) particles.splice(i, 1);
+      }
+      if (particles.length > 0) {
+        animationId = requestAnimationFrame(updateGame);
+      }
+      return;
+    }
+
+    frames++;
+    
+    // UI Messages
+    if (messageTimer > 0) {
+      messageTimer--;
+      if (messageTimer === 0) {
+        messageDisplay.style.opacity = 0;
+      }
+    }
+    
+    // Update background parallax
+    for (let star of backgroundStars) {
+      star.x -= star.speed * (gameSpeed / 5.5);
+      if (star.x < 0) {
+        star.x = canvas.width;
+        star.y = Math.random() * GROUND_Y;
+      }
+    }
+
+    player.update();
+    spawnObstacles();
+
+    // Move obstacles
+    for (let i = obstacles.length - 1; i >= 0; i--) {
+      obstacles[i].update();
+      if (obstacles[i].x + obstacles[i].width < 0) {
+        obstacles.splice(i, 1);
+      }
+    }
+
+    // Move pits
+    for (let i = pits.length - 1; i >= 0; i--) {
+      pits[i].update();
+      if (pits[i].x + pits[i].width < 0) {
+        pits.splice(i, 1);
+      }
+    }
+
+    // Update particles
+    for (let i = particles.length - 1; i >= 0; i--) {
+      particles[i].update();
+      if (particles[i].life <= 0) particles.splice(i, 1);
+    }
+
+    // Hover trail particles
+    if (!player.isGrounded && frames % 4 === 0) {
+      let color = player.form === 'ssj' ? '#ffff55' : (player.form === 'kaioken' ? '#ff5555' : '#ffffff');
+      let p = new Particle(player.x + 10, player.y + player.height - 5, color);
+      p.vx = -gameSpeed / 2; // Move backwards
+      p.vy = Math.random() * 2; // Move slightly down
+      p.life = 20; p.maxLife = 20; p.size = 3;
+      particles.push(p);
+    }
+
+    handleCollisions();
+    drawGame();
+
+    animationId = requestAnimationFrame(updateGame);
+  }
+
+  function drawGame() {
+    // Clear & Sky
+    ctx.fillStyle = '#0f0f1b';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Stars
+    ctx.fillStyle = '#fff';
+    for (let star of backgroundStars) {
+      ctx.globalAlpha = Math.random() > 0.95 ? 0.5 : 1; // Twinkle
+      ctx.fillRect(star.x, star.y, star.size, star.size);
+    }
+    ctx.globalAlpha = 1;
+
+    // Base Ground
+    ctx.fillStyle = '#2c3e50';
+    ctx.fillRect(0, GROUND_Y, canvas.width, canvas.height - GROUND_Y);
+    
+    // Ground Grid Line (Retro Synthwave vibe)
+    ctx.fillStyle = '#16a085';
+    ctx.fillRect(0, GROUND_Y, canvas.width, 6);
+    
+    // Moving ground pattern
+    ctx.fillStyle = '#1abc9c';
+    for(let i=0; i<canvas.width; i+=40) {
+      let offset = (frames * gameSpeed) % 40;
+      ctx.fillRect(i - offset, GROUND_Y + 6, 20, 4);
+    }
+
+    // Pits (overwrite ground)
+    for (let pit of pits) {
+      pit.draw(ctx);
+    }
+
+    // Obstacles
+    for (let obs of obstacles) {
+      obs.draw(ctx);
+    }
+
+    // Particles
+    for (let p of particles) {
+      p.draw(ctx);
+    }
+
+    // Player (hide if exploded)
+    if (!isGameOver) {
+       player.draw(ctx);
+    }
+  }
+
+  // Start the game!
+  initGame();
+
+</script>
+</body>
+</html>

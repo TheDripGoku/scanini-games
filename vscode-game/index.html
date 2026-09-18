@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Saiyan Runner</title>
+<style>
+  :root{
+    --bg-0:#05040c;
+    --bg-1:#0b0820;
+    --ink:#e8e6ff;
+    --accent:#ffb238;
+    --accent-2:#ff4d4d;
+    --panel:#100c26;
+    --panel-border:#3a2f6e;
+  }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{
+    margin:0; padding:0; width:100%; height:100%;
+    background:var(--bg-0);
+    overflow:hidden;
+    font-family:'Courier New', Courier, monospace;
+    color:var(--ink);
+  }
+  body{
+    display:flex; align-items:center; justify-content:center;
+    min-height:100vh;
+    background:
+      radial-gradient(ellipse at 50% -10%, #241a4d 0%, var(--bg-1) 45%, var(--bg-0) 100%);
+  }
+
+  #stage{
+    position:relative;
+    width:100%;
+    max-width:960px;
+    aspect-ratio:16/9;
+    margin:12px;
+    box-shadow:
+      0 0 0 3px #000,
+      0 0 0 6px var(--panel-border),
+      0 0 40px 6px rgba(120,80,255,0.25);
+    border-radius:4px;
+    overflow:hidden;
+    background:#000;
+  }
+
+  canvas{
+    display:block;
+    width:100%;
+    height:100%;
+    image-rendering:pixelated;
+    image-rendering:-moz-crisp-edges;
+    image-rendering:crisp-edges;
+    cursor:pointer;
+  }
+
+  .pixel-font{
+    font-family:'Courier New', Courier, monospace;
+    font-weight:bold;
+    letter-spacing:2px;
+    text-shadow:2px 2px 0 #000, -1px -1px 0 rgba(0,0,0,.4);
+  }
+
+  #hud{
+    position:absolute; top:0; left:0; right:0;
+    display:flex; justify-content:center;
+    padding:10px 0 0 0;
+    pointer-events:none;
+    z-index:5;
+  }
+  #hud .scorebox{
+    background:rgba(5,4,12,0.55);
+    border:2px solid var(--panel-border);
+    padding:4px 14px;
+    border-radius:3px;
+    font-size:clamp(14px,2.6vw,22px);
+    color:var(--accent);
+  }
+
+  .overlay{
+    position:absolute; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    flex-direction:column;
+    background:rgba(4,3,10,0.82);
+    text-align:center;
+    padding:16px;
+    z-index:10;
+    gap:14px;
+  }
+  .overlay.hidden{ display:none; }
+
+  .title{
+    font-size:clamp(22px,5vw,42px);
+    color:var(--accent);
+    text-transform:uppercase;
+    text-shadow:3px 3px 0 #000, 0 0 18px rgba(255,178,56,.7);
+    margin:0;
+  }
+  .title.go{ color:var(--accent-2); text-shadow:3px 3px 0 #000, 0 0 18px rgba(255,77,77,.7);}
+
+  .subtitle{
+    font-size:clamp(10px,1.8vw,15px);
+    color:#f8f8f8;
+    line-height:1.7;
+    max-width:520px;
+  }
+  .subtitle b{ color:var(--accent); }
+
+  .statline{
+    font-size:clamp(12px,2.4vw,18px);
+    color:var(--ink);
+  }
+  .statline span{ color:var(--accent); }
+
+  button.arcade-btn{
+    font-family:'Courier New', Courier, monospace;
+    font-weight:bold;
+    letter-spacing:2px;
+    text-transform:uppercase;
+    font-size:clamp(12px,2.4vw,16px);
+    background:linear-gradient(#ffce6b, var(--accent));
+    color:#241a02;
+    border:none;
+    border-bottom:4px solid #a05c00;
+    padding:10px 22px;
+    border-radius:3px;
+    cursor:pointer;
+    box-shadow:0 0 14px rgba(255,178,56,.5);
+  }
+  button.arcade-btn:active{
+    transform:translateY(2px);
+    border-bottom-width:2px;
+  }
+
+  .blink{ animation:blink 1.1s steps(1) infinite; }
+  @keyframes blink{ 50%{ opacity:0.25; } }
+
+  .footnote{
+    position:absolute; bottom:6px; right:8px;
+    font-size:9px; color:#f2f1f7;
+    z-index:5; pointer-events:none;
+  }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <canvas id="game" width="480" height="270"></canvas>
+
+  <div id="hud">
+    <div class="scorebox pixel-font">SCORE <span id="scoreLive">0</span></div>
+  </div>
+
+  <div id="startScreen" class="overlay">
+    <div class="title pixel-font">SAIYAN RUNNER</div>
+    <div class="subtitle pixel-font">
+      TAP <b>SPACE</b> OR <b>CLICK</b> TO JUMP.<br>
+      TAP REPEATEDLY TO HOVER OVER PITS.<br>
+      DODGE THE ENERGY PILLARS.<br><br>
+      0&ndash;49: NORMAL &nbsp;|&nbsp; 50&ndash;99: <span style="color:var(--accent-2)">KAIOKEN</span> &nbsp;|&nbsp; 100+: <span style="color:var(--accent)">SUPER SAIYAN</span>
+    </div>
+    <button class="arcade-btn" id="startBtn">START GAME</button>
+    <div class="subtitle blink pixel-font" style="margin-top:-4px;">PRESS SPACE TO BEGIN</div>
+  </div>
+
+  <div id="gameOverScreen" class="overlay hidden">
+    <div class="title go pixel-font">GAME OVER</div>
+    <div class="statline pixel-font">SCORE: <span id="finalScore">0</span></div>
+    <div class="statline pixel-font">BEST: <span id="bestScore">0</span></div>
+    <button class="arcade-btn" id="restartBtn">RESTART</button>
+  </div>
+
+  <div class="footnote">8-BIT SAIYAN RUNNER</div>
+</div>
+
+<script>
+    // Retro 8-bit jump sound synthesizer
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function playJumpSound() {
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+
+  osc.type = 'square'; // Classic retro sound
+  osc.frequency.setValueAtTime(180, audioCtx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(600, audioCtx.currentTime + 0.12);
+
+  gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+  gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.12);
+
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+
+  osc.start();
+  osc.stop(audioCtx.currentTime + 0.12);
+}
+(function(){
+  "use strict";
+
+  /* ---------------------------------------------------------
+     Setup
+  --------------------------------------------------------- */
+  var canvas = document.getElementById('game');
+  var ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+
+  var W = canvas.width, H = canvas.height;
+  var GROUND_Y = 208;          // top of ground band
+  var GROUND_H = H - GROUND_Y;
+
+  var startScreen = document.getElementById('startScreen');
+  var gameOverScreen = document.getElementById('gameOverScreen');
+  var scoreLiveEl = document.getElementById('scoreLive');
+  var finalScoreEl = document.getElementById('finalScore');
+  var bestScoreEl = document.getElementById('bestScore');
+  var startBtn = document.getElementById('startBtn');
+  var restartBtn = document.getElementById('restartBtn');
+
+  var STATE = { START:0, PLAY:1, OVER:2 };
+  var state = STATE.START;
+
+  var bestScore = 0;
+  try{
+    var saved = localStorage.getItem('saiyanRunnerBest');
+    if(saved) bestScore = parseInt(saved,10) || 0;
+  }catch(e){ /* storage unavailable, keep in-memory only */ }
+
+  /* ---------------------------------------------------------
+     Player
+  --------------------------------------------------------- */
+  var player = {
+    x: 78,
+    y: 0,
+    w: 26,
+    h: 34,
+    vy: 0,
+    grounded: true,
+    flapCooldown: 0
+  };
+
+  var GRAVITY = 0.32;
+  var FLAP_VY = -5.4;
+  var MAX_FALL = 7.5;
+
+  function resetPlayer(){
+    player.y = GROUND_Y - player.h;
+    player.vy = 0;
+    player.grounded = true;
+    player.flapCooldown = 0;
+  }
+
+  /* ---------------------------------------------------------
+     World / obstacles
+  --------------------------------------------------------- */
+  var distance = 0;
+  var score = 0;
+  var baseSpeed = 2.6;
+  var speed = baseSpeed;
+  var obstacles = []; // {type:'pit'|'ground'|'gate', x, w, ...}
+  var spawnTimer = 0;
+  var frameCount = 0;
+
+  function formFor(sc){
+    if(sc >= 100) return 'ssj';
+    if(sc >= 50) return 'kaioken';
+    return 'normal';
+  }
+
+  function speedMultiplier(form){
+    if(form === 'ssj') return 1.34;
+    if(form === 'kaioken') return 1.16;
+    return 1.0;
+  }
+
+  function resetWorld(){
+    distance = 0;
+    score = 0;
+    speed = baseSpeed;
+    obstacles = [];
+    spawnTimer = 90;
+    frameCount = 0;
+    particles.length = 0;
+  }
+
+  function spawnObstacle(){
+    var form = formFor(score);
+    var roll = Math.random();
+    var minGap = 150 - Math.min(score, 30); // world gets a bit tighter
+
+    if(roll < 0.34){
+      // ground pillar - jump over it
+      var h = 24 + Math.random()*22;
+      obstacles.push({
+        type:'ground',
+        x: W + 10,
+        w: 16,
+        h: h
+      });
+    } else if(roll < 0.66){
+      // pit in the ground - must fly over
+      var pw = 46 + Math.random()*40 + Math.min(score,20)*0.6;
+      obstacles.push({
+        type:'pit',
+        x: W + 10,
+        w: pw
+      });
+    } else {
+      // floating energy gate - fly through the gap
+      var gapH = Math.max(100 - Math.min(score,40)*0.6, 76);
+      var gapY = 30 + Math.random() * (GROUND_Y - 50 - gapH);
+      obstacles.push({
+        type:'gate',
+        x: W + 10,
+        w: 16,
+        gapY: gapY,
+        gapH: gapH
+      });
+    }
+    spawnTimer = minGap + Math.random()*60;
+  }
+
+  /* ---------------------------------------------------------
+     Particles (aura sparks)
+  --------------------------------------------------------- */
+  var particles = [];
+  function spawnAuraParticle(form){
+    if(form === 'normal') return;
+    var colorSets = {
+      kaioken: ['#ff3b30','#ff7a52','#ffb27a'],
+      ssj: ['#ffe066','#fff6c9','#ffd23f']
+    };
+    var colors = colorSets[form];
+    var side = Math.random() < 0.5 ? -1 : 1;
+    particles.push({
+      x: player.x + player.w/2 + side*(player.w/2+2) + (Math.random()*6-3),
+      y: player.y + player.h*0.3 + Math.random()*player.h*0.7,
+      vx: -speed*0.6 - Math.random()*1.2,
+      vy: (Math.random()-0.5)*1.6 - 0.3,
+      life: 22 + Math.random()*14,
+      maxLife: 30,
+      size: form === 'ssj' ? (1+Math.random()*2.2) : (1+Math.random()*1.6),
+      color: colors[(Math.random()*colors.length)|0],
+      spark: form === 'ssj' && Math.random() < 0.35
+    });
+  }
+
+  function updateParticles(){
+    for(var i=particles.length-1;i>=0;i--){
+      var p = particles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.life--;
+      if(p.life <= 0) particles.splice(i,1);
+    }
+  }
+
+  function drawParticles(){
+    for(var i=0;i<particles.length;i++){
+      var p = particles[i];
+      var a = Math.max(p.life / p.maxLife, 0);
+      ctx.globalAlpha = a;
+      ctx.fillStyle = p.color;
+      if(p.spark){
+        ctx.fillRect(Math.round(p.x), Math.round(p.y), 3, 1);
+        ctx.fillRect(Math.round(p.x)+1, Math.round(p.y)-1, 1, 3);
+      } else {
+        ctx.fillRect(Math.round(p.x), Math.round(p.y), p.size, p.size);
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  /* ---------------------------------------------------------
+     Background layers (parallax)
+  --------------------------------------------------------- */
+  var stars = [];
+  (function initStars(){
+    for(var i=0;i<50;i++){
+      stars.push({
+        x: Math.random()*W,
+        y: Math.random()*(GROUND_Y-10),
+        size: Math.random() < 0.15 ? 2 : 1,
+        speed: 0.15 + Math.random()*0.35,
+        tw: Math.random()*Math.PI*2
+      });
+    }
+  })();
+
+  var mountains = [];
+  (function initMountains(){
+    var mx = -20;
+    while(mx < W + 60){
+      mountains.push({
+        x: mx,
+        w: 60 + Math.random()*60,
+        h: 26 + Math.random()*34
+      });
+      mx += 50 + Math.random()*50;
+    }
+  })();
+
+  var groundOffset = 0;
+
+  function drawBackground(){
+    // sky gradient
+    var g = ctx.createLinearGradient(0,0,0,GROUND_Y);
+    g.addColorStop(0, '#0a0620');
+    g.addColorStop(0.6, '#170f3d');
+    g.addColorStop(1, '#2a1d5c');
+    ctx.fillStyle = g;
+    ctx.fillRect(0,0,W,GROUND_Y);
+
+    // stars
+    for(var i=0;i<stars.length;i++){
+      var s = stars[i];
+      var tw = 0.55 + 0.45*Math.sin(frameCount*0.05 + s.tw);
+      ctx.globalAlpha = tw;
+      ctx.fillStyle = '#cfd0ff';
+      ctx.fillRect(Math.round(s.x), Math.round(s.y), s.size, s.size);
+      ctx.globalAlpha = 1;
+      if(state === STATE.PLAY){
+        s.x -= s.speed;
+        if(s.x < 0) s.x = W;
+      }
+    }
+
+    // mountains (silhouette)
+    ctx.fillStyle = '#120c33';
+    for(var m=0;m<mountains.length;m++){
+      var mt = mountains[m];
+      ctx.beginPath();
+      ctx.moveTo(mt.x, GROUND_Y);
+      ctx.lineTo(mt.x + mt.w/2, GROUND_Y - mt.h);
+      ctx.lineTo(mt.x + mt.w, GROUND_Y);
+      ctx.closePath();
+      ctx.fill();
+      if(state === STATE.PLAY){
+        mt.x -= speed*0.25;
+      }
+      if(mt.x + mt.w < 0){
+        mt.x = W + 40;
+        mt.w = 60 + Math.random()*60;
+        mt.h = 26 + Math.random()*34;
+      }
+    }
+  }
+
+  function drawGround(){
+    if(state === STATE.PLAY){
+      groundOffset = (groundOffset - speed) % 16;
+    }
+    // base strip
+    ctx.fillStyle = '#0d0824';
+    ctx.fillRect(0, GROUND_Y, W, GROUND_H);
+
+    // find pit gaps to skip drawing solid ground there
+    var segs = [{x:0, w:W}];
+    for(var i=0;i<obstacles.length;i++){
+      var o = obstacles[i];
+      if(o.type === 'pit'){
+        var newSegs = [];
+        for(var s=0;s<segs.length;s++){
+          var seg = segs[s];
+          var pitStart = o.x, pitEnd = o.x + o.w;
+          if(pitEnd <= seg.x || pitStart >= seg.x+seg.w){
+            newSegs.push(seg);
+          } else {
+            if(pitStart > seg.x) newSegs.push({x:seg.x, w:pitStart-seg.x});
+            if(pitEnd < seg.x+seg.w) newSegs.push({x:pitEnd, w:(seg.x+seg.w)-pitEnd});
+          }
+        }
+        segs = newSegs;
+      }
+    }
+
+    for(var k=0;k<segs.length;k++){
+      var sgx = segs[k].x, sgw = segs[k].w;
+      var grd = ctx.createLinearGradient(0,GROUND_Y,0,H);
+      grd.addColorStop(0,'#4a2f8a');
+      grd.addColorStop(0.25,'#241457');
+      grd.addColorStop(1,'#0a0620');
+      ctx.fillStyle = grd;
+      ctx.fillRect(sgx, GROUND_Y, sgw, GROUND_H);
+
+      // top edge glow line
+      ctx.fillStyle = '#8f6bff';
+      ctx.fillRect(sgx, GROUND_Y, sgw, 2);
+
+      // brick / tile pattern
+      ctx.fillStyle = 'rgba(255,255,255,0.06)';
+      var tileStart = Math.floor((sgx + groundOffset*-1) / 16) * 16 - 16;
+      for(var tx = tileStart; tx < sgx+sgw+16; tx += 16){
+        var lineX = Math.round(tx - groundOffset);
+        if(lineX >= sgx && lineX <= sgx+sgw){
+          ctx.fillRect(lineX, GROUND_Y+4, 1, GROUND_H-4);
+        }
+      }
+
+      // pit edge highlight
+      ctx.fillStyle = '#ff4d4d';
+      if(sgx > 0){ ctx.fillRect(sgx-2, GROUND_Y, 2, GROUND_H); }
+      if(sgx+sgw < W){ ctx.fillRect(sgx+sgw, GROUND_Y, 2, GROUND_H); }
+    }
+
+    // pit glow bottom (danger)
+    for(var p2=0;p2<obstacles.length;p2++){
+      var op = obstacles[p2];
+      if(op.type === 'pit'){
+        ctx.fillStyle = 'rgba(255,50,50,0.18)';
+        ctx.fillRect(op.x, GROUND_Y, op.w, GROUND_H);
+      }
+    }
+  }
+
+  /* ---------------------------------------------------------
+     Obstacles drawing
+  --------------------------------------------------------- */
+  function drawPillar(x, y, w, h, glow){
+    // energy pillar: dark core + glowing edges, retro block style
+    ctx.fillStyle = glow;
+    ctx.fillRect(x-2, y-2, w+4, h+4);
+    ctx.fillStyle = '#120a2b';
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = '#ffffff';
+    for(var i=0;i<h;i+=10){
+      ctx.fillRect(x+2, y+i+3, w-4, 2);
+    }
+    ctx.fillStyle = glow;
+    ctx.fillRect(x, y, 2, h);
+    ctx.fillRect(x+w-2, y, 2, h);
+  }
+
+  function drawObstacles(){
+    for(var i=0;i<obstacles.length;i++){
+      var o = obstacles[i];
+      if(o.type === 'ground'){
+        drawPillar(o.x, GROUND_Y - o.h, o.w, o.h, '#3fe0ff');
+      } else if(o.type === 'gate'){
+        drawPillar(o.x, 0, o.w, o.gapY, '#ff5fd1');
+        drawPillar(o.x, o.gapY + o.gapH, o.w, GROUND_Y - (o.gapY+o.gapH), '#ff5fd1');
+      }
+      // pits are drawn as part of ground
+    }
+  }
+
+  /* ---------------------------------------------------------
+     Goku sprite (pixel-block style)
+  --------------------------------------------------------- */
+  function drawGoku(px, py, form, running, airborne){
+    var t = frameCount;
+    var legSwing = running ? Math.sin(t*0.35) : 0;
+    var armSwing = airborne ? -0.8 : Math.sin(t*0.35+Math.PI);
+
+    var haircol = form === 'ssj' ? '#ffe066' : '#181018';
+    var gicol = '#ff7a1a';
+    var gishade = '#c95c0f';
+    var undercol = '#2255cc';
+    var skincol = '#f2b98a';
+    var bootcol = '#181018';
+    var eyecol = form === 'ssj' ? '#0aff9e' : '#181018';
+
+    ctx.save();
+    ctx.translate(Math.round(px), Math.round(py));
+
+    // ---- aura glow (behind body) ----
+    if(form !== 'normal'){
+      var glowR = 22 + Math.sin(t*0.3)*3;
+      var grad = ctx.createRadialGradient(13,17,4,13,17,glowR);
+      if(form === 'kaioken'){
+        grad.addColorStop(0, 'rgba(255,70,60,0.55)');
+        grad.addColorStop(1, 'rgba(255,70,60,0)');
+      } else {
+        grad.addColorStop(0, 'rgba(255,220,90,0.6)');
+        grad.addColorStop(1, 'rgba(255,220,90,0)');
+      }
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(13,17,glowR,0,Math.PI*2);
+      ctx.fill();
+    }
+
+    // ---- legs ----
+    var legOffset = Math.round(legSwing*3);
+    // back leg
+    ctx.fillStyle = gishade;
+    ctx.fillRect(9 - legOffset, 24, 6, 8);
+    ctx.fillStyle = bootcol;
+    ctx.fillRect(8 - legOffset, 31, 8, 3);
+    // front leg
+    ctx.fillStyle = gicol;
+    ctx.fillRect(13 + legOffset, 24, 6, 8);
+    ctx.fillStyle = bootcol;
+    ctx.fillRect(12 + legOffset, 31, 8, 3);
+
+    // ---- torso (gi) ----
+    ctx.fillStyle = gicol;
+    ctx.fillRect(6, 14, 16, 12);
+    // undershirt v
+    ctx.fillStyle = undercol;
+    ctx.fillRect(11, 14, 6, 5);
+    // belt
+    ctx.fillStyle = undercol;
+    ctx.fillRect(6, 22, 16, 3);
+    // gi shading
+    ctx.fillStyle = gishade;
+    ctx.fillRect(6, 14, 3, 12);
+
+    // ---- arms ----
+    var armOffset = Math.round(armSwing*4);
+    ctx.fillStyle = gicol;
+    ctx.fillRect(3, 15 - Math.max(armOffset,0), 4, 9);
+    ctx.fillStyle = skincol;
+    ctx.fillRect(3, 23 - Math.max(armOffset,0), 4, 3);
+    ctx.fillStyle = gicol;
+    ctx.fillRect(19, 15 + Math.max(-armOffset,0), 4, 9);
+    ctx.fillStyle = skincol;
+    ctx.fillRect(19, 23 + Math.max(-armOffset,0), 4, 3);
+    // wristbands
+    ctx.fillStyle = undercol;
+    ctx.fillRect(3, 22 - Math.max(armOffset,0), 4, 2);
+    ctx.fillRect(19, 22 + Math.max(-armOffset,0), 4, 2);
+
+    // ---- neck / head ----
+    ctx.fillStyle = skincol;
+    ctx.fillRect(10, 10, 6, 4);
+    ctx.fillRect(8, 6, 12, 8);
+
+    // eyes
+    ctx.fillStyle = eyecol;
+    ctx.fillRect(11, 9, 2, 2);
+    ctx.fillRect(15, 9, 2, 2);
+
+    // ---- hair (spiky, staircase blocks for pixel look) ----
+    ctx.fillStyle = haircol;
+    ctx.fillRect(7, 4, 14, 4);
+    ctx.fillRect(6, 6, 3, 4);
+    ctx.fillRect(19, 6, 3, 4);
+    // spikes
+    ctx.fillRect(4, 0, 4, 5);
+    ctx.fillRect(9, -3, 4, 6);
+    ctx.fillRect(15, -4, 4, 7);
+    ctx.fillRect(20, -1, 4, 6);
+    ctx.fillRect(2, 3, 3, 4);
+    if(form === 'ssj'){
+      ctx.fillRect(11, -7, 3, 5);
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.fillRect(11, -8, 3, 2);
+    }
+
+    ctx.restore();
+  }
+
+  /* ---------------------------------------------------------
+     Input
+  --------------------------------------------------------- */
+  function flap(){
+    if(state === STATE.START){
+      startGame();
+      return;
+    }
+    if(state === STATE.OVER){
+      return;
+    }
+    player.vy = FLAP_VY;
+    player.grounded = false;
+    playJumpSound();
+  }
+
+  window.addEventListener('keydown', function(e){
+    if(e.code === 'Space' || e.key === ' '){
+      e.preventDefault();
+      if(state === STATE.OVER){ startGame(); }
+      else { flap(); }
+    }
+  });
+  canvas.addEventListener('mousedown', function(e){
+    e.preventDefault();
+    flap();
+  });
+  canvas.addEventListener('touchstart', function(e){
+    e.preventDefault();
+    flap();
+  }, {passive:false});
+
+  startBtn.addEventListener('click', startGame);
+  restartBtn.addEventListener('click', startGame);
+
+  function startGame(){
+    resetWorld();
+    resetPlayer();
+    state = STATE.PLAY;
+    startScreen.classList.add('hidden');
+    gameOverScreen.classList.add('hidden');
+  }
+
+  function gameOver(){
+    state = STATE.OVER;
+    if(score > bestScore){
+      bestScore = score;
+      try{ localStorage.setItem('saiyanRunnerBest', String(bestScore)); }catch(e){}
+    }
+    finalScoreEl.textContent = score;
+    bestScoreEl.textContent = bestScore;
+    gameOverScreen.classList.remove('hidden');
+  }
+
+  /* ---------------------------------------------------------
+     Update
+  --------------------------------------------------------- */
+  function inPit(x, w){
+    for(var i=0;i<obstacles.length;i++){
+      var o = obstacles[i];
+      if(o.type !== 'pit') continue;
+      if(x + w > o.x && x < o.x + o.w) return true;
+    }
+    return false;
+  }
+
+  function checkCollisions(){
+    var pl = { x: player.x+6, y: player.y+2, w: player.w-10, h: player.h-4 };
+
+    // fell into a pit
+    if(player.grounded === false && player.y + player.h >= GROUND_Y){
+      if(inPit(player.x+4, player.w-8)){
+        return true;
+      }
+    }
+
+    for(var i=0;i<obstacles.length;i++){
+      var o = obstacles[i];
+      if(o.type === 'ground'){
+        var ox = o.x, oy = GROUND_Y - o.h, ow = o.w, oh = o.h;
+        if(pl.x < ox+ow && pl.x+pl.w > ox && pl.y < oy+oh && pl.y+pl.h > oy){
+          return true;
+        }
+      } else if(o.type === 'gate'){
+        var gx = o.x, gw = o.w;
+        if(pl.x < gx+gw && pl.x+pl.w > gx){
+          if(pl.y < o.gapY || pl.y+pl.h > o.gapY+o.gapH){
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  function update(){
+    frameCount++;
+
+    if(state !== STATE.PLAY){
+      return;
+    }
+
+    var form = formFor(score);
+    var mult = speedMultiplier(form);
+    speed = baseSpeed * mult + Math.min(score*0.012, 1.6);
+
+    // physics
+    player.vy += GRAVITY;
+    if(player.vy > MAX_FALL) player.vy = MAX_FALL;
+    player.y += player.vy;
+
+    var standingOnGround = !inPit(player.x+4, player.w-8);
+    if(player.y + player.h >= GROUND_Y && standingOnGround){
+      player.y = GROUND_Y - player.h;
+      player.vy = 0;
+      player.grounded = true;
+    } else {
+      player.grounded = false;
+    }
+
+    // fell below screen (pit death safety)
+    if(player.y > H + 20){
+      gameOver();
+      return;
+    }
+
+    // world scroll
+    distance += speed;
+    score = Math.floor(distance / 34);
+    scoreLiveEl.textContent = score;
+
+    for(var i=obstacles.length-1;i>=0;i--){
+      obstacles[i].x -= speed;
+      if(obstacles[i].x + (obstacles[i].w||0) < -20){
+        obstacles.splice(i,1);
+      }
+    }
+    spawnTimer -= 1;
+    if(spawnTimer <= 0){
+      spawnObstacle();
+    }
+
+    // aura particles
+    if(form !== 'normal' && frameCount % 2 === 0){
+      spawnAuraParticle(form);
+    }
+    updateParticles();
+
+    if(checkCollisions()){
+      gameOver();
+    }
+  }
+
+  /* ---------------------------------------------------------
+     Render
+  --------------------------------------------------------- */
+  function render(){
+    ctx.clearRect(0,0,W,H);
+    drawBackground();
+    drawGround();
+    drawObstacles();
+
+    var form = formFor(score);
+    var running = player.grounded;
+    var airborne = !player.grounded;
+    drawParticles();
+    drawGoku(player.x, player.y, form, running, airborne);
+
+    if(state === STATE.START){
+      // idle preview already shown via HTML overlay
+    }
+  }
+
+  /* ---------------------------------------------------------
+     Main loop
+  --------------------------------------------------------- */
+  function loop(){
+    update();
+    render();
+    requestAnimationFrame(loop);
+  }
+
+  resetPlayer();
+  bestScoreEl.textContent = bestScore;
+  requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>
