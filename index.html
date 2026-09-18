@@ -1,8 +1,61 @@
 <!DOCTYPE html>
-<html>
-<body>
-    <h1>Scanini Testing Games</h1>
-    <a href="/vscode-game/index.html">Play the Claude Game (Saiyan runner)</a><br><br>
-    <a href="/Google%20Antigravity-game/index.html">Play the Antigravity Game (Goku endless runner game)</a>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scanini Testing Games</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Adding a custom text shadow to ensure the orange text pops against the blurry background */
+        .text-outline {
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.9), -1px -1px 0 rgba(0, 0, 0, 0.5);
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen flex flex-col items-center justify-center p-8 font-sans">
+
+    <header class="mb-12">
+        <h1 class="text-4xl md:text-5xl font-extrabold text-center tracking-wide text-gray-100 shadow-sm">
+            Scanini Testing Games
+        </h1>
+        <p class="text-center text-gray-400 mt-3 text-lg">Hover over a game to select it</p>
+    </header>
+
+    <main class="flex flex-col md:flex-row gap-10 items-center justify-center">
+        
+        <!-- Card 1: Claude Game -->
+        <a href="/vscode-game/index.html" class="group relative block w-[300px] h-[300px] rounded-2xl overflow-hidden shadow-2xl transition-transform duration-300 hover:scale-105 cursor-pointer ring-4 ring-transparent hover:ring-orange-500/50">
+            <!-- Image with blur on hover -->
+            <img 
+                src="./Saiyan runner icon.png" 
+                alt="Claude Game" 
+                class="w-full h-full object-cover transition-[filter] duration-300 ease-in-out group-hover:blur-[5px]"
+            >
+            <!-- Overlay Text fading in on hover -->
+            <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 ease-in-out bg-black/20">
+                <span class="text-orange-500 font-bold text-3xl text-center px-4 text-outline leading-tight">
+                    Saiyan runner
+                </span>
+            </div>
+        </a>
+
+        <!-- Card 2: Antigravity Game -->
+        <a href="/Google%20Antigravity-game/index.html" class="group relative block w-[300px] h-[300px] rounded-2xl overflow-hidden shadow-2xl transition-transform duration-300 hover:scale-105 cursor-pointer ring-4 ring-transparent hover:ring-orange-500/50">
+            <!-- Image with blur on hover -->
+            <img 
+                src="Goku endless runner game icon.png" 
+                alt="Antigravity Game" 
+                class="w-full h-full object-cover transition-[filter] duration-300 ease-in-out group-hover:blur-[5px]"
+            >
+            <!-- Overlay Text fading in on hover -->
+            <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 ease-in-out bg-black/20">
+                <span class="text-orange-500 font-bold text-3xl text-center px-4 text-outline leading-tight">
+                    Goku endless runner game
+                </span>
+            </div>
+        </a>
+
+    </main>
+
 </body>
 </html>
