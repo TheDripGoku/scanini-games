@@ -140,6 +140,55 @@
     font-size:9px; color:#4b437f;
     z-index:5; pointer-events:none;
   }
+
+  #pauseBtn{
+    position:absolute; top:8px; right:8px;
+    z-index:6;
+    width:34px; height:30px;
+    background:rgba(5,4,12,0.6);
+    border:2px solid var(--panel-border);
+    border-radius:3px;
+    color:var(--accent);
+    font-family:'Courier New', Courier, monospace;
+    font-size:14px;
+    letter-spacing:1px;
+    cursor:pointer;
+    line-height:1;
+  }
+  #pauseBtn:active{ transform:translateY(1px); }
+  #pauseBtn.hidden{ display:none; }
+
+  #muteBtn{
+    position:absolute; top:8px; right:48px;
+    z-index:6;
+    width:34px; height:30px;
+    background:rgba(5,4,12,0.6);
+    border:2px solid var(--panel-border);
+    border-radius:3px;
+    color:var(--accent);
+    font-size:14px;
+    cursor:pointer;
+    line-height:1;
+  }
+  #muteBtn:active{ transform:translateY(1px); }
+  #muteBtn.muted{ color:#6b6488; border-color:#453d78; }
+
+  .notes-row{
+    display:flex; gap:14px; font-size:26px;
+  }
+  .notes-row .note{
+    color:var(--accent);
+    display:inline-block;
+    animation:note-bounce 1s ease-in-out infinite;
+    text-shadow:0 0 10px rgba(255,178,56,.8);
+  }
+  .notes-row .note:nth-child(2){ animation-delay:0.15s; color:#8fd6ff; text-shadow:0 0 10px rgba(143,214,255,.8); }
+  .notes-row .note:nth-child(3){ animation-delay:0.3s; }
+  .notes-row .note:nth-child(4){ animation-delay:0.45s; color:#8fd6ff; text-shadow:0 0 10px rgba(143,214,255,.8); }
+  @keyframes note-bounce{
+    0%, 100%{ transform:translateY(0); }
+    50%{ transform:translateY(-10px); }
+  }
 </style>
 </head>
 <body>
@@ -151,13 +200,18 @@
     <div class="scorebox pixel-font">SCORE <span id="scoreLive">0</span></div>
   </div>
 
+  <button id="muteBtn" class="pixel-icon-btn" aria-label="Mute">🔊</button>
+  <button id="pauseBtn" class="pixel-icon-btn hidden" aria-label="Pause">❚❚</button>
+
   <div id="startScreen" class="overlay">
     <div class="title pixel-font">SAIYAN RUNNER</div>
     <div class="subtitle pixel-font">
       TAP <b>SPACE</b> OR <b>CLICK</b> TO JUMP.<br>
       TAP REPEATEDLY TO HOVER OVER PITS.<br>
       DODGE THE ENERGY PILLARS.<br><br>
-      0&ndash;49: NORMAL &nbsp;|&nbsp; 50&ndash;99: <span style="color:var(--accent-2)">KAIOKEN</span> &nbsp;|&nbsp; 100+: <span style="color:var(--accent)">SUPER SAIYAN</span><br><br>
+      0&ndash;49: NORMAL &nbsp;|&nbsp; 50: <span style="color:#ff7a52">KAIOKEN</span> &nbsp;|&nbsp; 100: <span style="color:#ffe066">SSJ</span> &nbsp;|&nbsp; 200: SSJ2<br>
+      300: SSJ3 &nbsp;|&nbsp; 400: SSJ4 &nbsp;|&nbsp; 550: SSJ GOD &nbsp;|&nbsp; 650: SSJ BLUE<br>
+      750: BLUE KAIOKEN &nbsp;|&nbsp; 1000: <span style="color:#cfd2e8">ULTRA INSTINCT</span> &nbsp;|&nbsp; 1300: <span style="color:#c88bff">MASTERED UI</span><br><br>
       GRAB GLOWING <span style="color:var(--accent)">DRAGON BALLS</span> FOR A RANDOM POWER-UP:<br>
       BONUS SCORE &middot; KI SHIELD &middot; TIME SLOW
     </div>
@@ -170,6 +224,18 @@
     <div class="statline pixel-font">SCORE: <span id="finalScore">0</span></div>
     <div class="statline pixel-font">BEST: <span id="bestScore">0</span></div>
     <button class="arcade-btn" id="restartBtn">RESTART</button>
+  </div>
+
+  <div id="pauseScreen" class="overlay hidden">
+    <div class="title pixel-font" style="color:#8fd6ff; text-shadow:3px 3px 0 #000, 0 0 18px rgba(143,214,255,.7);">PAUSED</div>
+    <div class="notes-row" aria-hidden="true">
+      <span class="note pixel-font">&#9834;</span>
+      <span class="note pixel-font">&#9833;</span>
+      <span class="note pixel-font">&#9834;</span>
+      <span class="note pixel-font">&#9833;</span>
+    </div>
+    <div class="subtitle pixel-font">ENJOY THE INTERMISSION JINGLE</div>
+    <button class="arcade-btn" id="resumeBtn">RESUME</button>
   </div>
 
   <div class="footnote">8-BIT SAIYAN RUNNER</div>
@@ -192,13 +258,242 @@
 
   var startScreen = document.getElementById('startScreen');
   var gameOverScreen = document.getElementById('gameOverScreen');
+  var pauseScreen = document.getElementById('pauseScreen');
+  var pauseBtn = document.getElementById('pauseBtn');
+  var muteBtn = document.getElementById('muteBtn');
+  var resumeBtn = document.getElementById('resumeBtn');
   var scoreLiveEl = document.getElementById('scoreLive');
   var finalScoreEl = document.getElementById('finalScore');
   var bestScoreEl = document.getElementById('bestScore');
   var startBtn = document.getElementById('startBtn');
   var restartBtn = document.getElementById('restartBtn');
 
-  var STATE = { START:0, PLAY:1, OVER:2 };
+  /* ---------------------------------------------------------
+     Sound engine (synthesized, no external audio files)
+  --------------------------------------------------------- */
+  var audioCtx = null;
+  var masterGain = null;
+  var muted = false;
+  try{
+    muted = localStorage.getItem('saiyanRunnerMuted') === '1';
+  }catch(e){}
+
+  function ensureAudio(){
+    if(!audioCtx){
+      try{
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if(AC) audioCtx = new AC();
+      }catch(e){ audioCtx = null; }
+    }
+    if(audioCtx && !masterGain){
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = muted ? 0 : 1;
+      masterGain.connect(audioCtx.destination);
+    }
+    if(audioCtx && audioCtx.state === 'suspended'){
+      audioCtx.resume().catch(function(){});
+    }
+  }
+
+  function setMuted(next){
+    muted = next;
+    if(masterGain){
+      masterGain.gain.value = muted ? 0 : 1;
+    }
+    try{ localStorage.setItem('saiyanRunnerMuted', muted ? '1' : '0'); }catch(e){}
+    muteBtn.textContent = muted ? '🔇' : '🔊';
+    muteBtn.classList.toggle('muted', muted);
+    muteBtn.setAttribute('aria-label', muted ? 'Unmute' : 'Mute');
+  }
+
+  function tone(freq, start, dur, type, vol, glideTo){
+    if(!audioCtx) return;
+    try{
+      var t0 = audioCtx.currentTime + (start||0);
+      var osc = audioCtx.createOscillator();
+      var gain = audioCtx.createGain();
+      osc.type = type || 'square';
+      osc.frequency.setValueAtTime(freq, t0);
+      if(glideTo){
+        osc.frequency.exponentialRampToValueAtTime(Math.max(glideTo,20), t0+dur);
+      }
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.linearRampToValueAtTime(vol||0.15, t0+0.012);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+      osc.connect(gain).connect(masterGain || audioCtx.destination);
+      osc.start(t0);
+      osc.stop(t0+dur+0.03);
+    }catch(e){}
+  }
+
+  function noiseBurst(start, dur, vol, filterFreq, filterType){
+    if(!audioCtx) return;
+    try{
+      var t0 = audioCtx.currentTime + (start||0);
+      var bufferSize = Math.max(1, Math.floor(audioCtx.sampleRate * dur));
+      var buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      var data = buffer.getChannelData(0);
+      for(var i=0;i<bufferSize;i++){ data[i] = Math.random()*2-1; }
+      var noise = audioCtx.createBufferSource();
+      noise.buffer = buffer;
+      var filter = audioCtx.createBiquadFilter();
+      filter.type = filterType || 'lowpass';
+      filter.frequency.value = filterFreq || 2000;
+      var gain = audioCtx.createGain();
+      gain.gain.setValueAtTime(vol||0.2, t0);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+      noise.connect(filter).connect(gain).connect(masterGain || audioCtx.destination);
+      noise.start(t0);
+      noise.stop(t0+dur+0.03);
+    }catch(e){}
+  }
+
+  var SFX = {
+    jump: function(){
+      tone(420, 0, 0.12, 'square', 0.13, 780);
+    },
+    step: function(){
+      noiseBurst(0, 0.04, 0.05, 1000, 'lowpass');
+    },
+    hit: function(){
+      noiseBurst(0, 0.3, 0.22, 700, 'lowpass');
+      tone(180, 0, 0.32, 'sawtooth', 0.18, 45);
+    },
+    collect: function(){
+      tone(880, 0, 0.07, 'square', 0.13);
+      tone(1320, 0.06, 0.1, 'square', 0.13);
+    },
+    buffBonus: function(){
+      tone(660, 0, 0.08, 'square', 0.14);
+      tone(880, 0.08, 0.08, 'square', 0.14);
+      tone(1180, 0.16, 0.16, 'square', 0.15);
+    },
+    buffShield: function(){
+      tone(320, 0, 0.28, 'sawtooth', 0.09, 520);
+      tone(480, 0.06, 0.3, 'sawtooth', 0.08, 700);
+    },
+    buffSlow: function(){
+      tone(520, 0, 0.35, 'sine', 0.14, 140);
+    },
+    kaioken: function(){
+      tone(180, 0, 0.3, 'sawtooth', 0.17, 90);
+      tone(260, 0.05, 0.35, 'sawtooth', 0.14, 700);
+      noiseBurst(0.05, 0.25, 0.13, 1500);
+    },
+    ssj: function(){
+      tone(140, 0, 0.4, 'sawtooth', 0.19, 70);
+      tone(220, 0.1, 0.55, 'sawtooth', 0.17, 1200);
+      noiseBurst(0.1, 0.55, 0.19, 3200);
+      for(var i=0;i<5;i++){
+        tone(1400+Math.random()*900, 0.15+i*0.07, 0.045, 'square', 0.05);
+      }
+    },
+    // SSJ2: sharper, double electric discharge
+    ssj2: function(){
+      tone(150, 0, 0.35, 'sawtooth', 0.19, 65);
+      tone(240, 0.08, 0.5, 'sawtooth', 0.17, 1500);
+      noiseBurst(0.08, 0.45, 0.2, 3600, 'highpass');
+      noiseBurst(0.28, 0.25, 0.16, 3600, 'highpass');
+      for(var i=0;i<8;i++){
+        tone(1600+Math.random()*1200, 0.12+i*0.05, 0.035, 'square', 0.055);
+      }
+    },
+    // SSJ3: deep drawn-out roar, huge power spike
+    ssj3: function(){
+      tone(90, 0, 0.6, 'sawtooth', 0.2, 55);
+      tone(130, 0.15, 0.75, 'sawtooth', 0.18, 900);
+      noiseBurst(0.1, 0.9, 0.22, 1200, 'bandpass');
+      for(var i=0;i<6;i++){
+        tone(1200+Math.random()*1000, 0.35+i*0.08, 0.05, 'square', 0.05);
+      }
+    },
+    // SSJ4: primal beast growl, low and feral
+    ssj4: function(){
+      tone(60, 0, 0.55, 'sawtooth', 0.22, 40);
+      tone(95, 0.05, 0.6, 'square', 0.15, 55);
+      noiseBurst(0, 0.7, 0.26, 500, 'bandpass');
+      noiseBurst(0.4, 0.35, 0.2, 350, 'lowpass');
+      tone(220, 0.55, 0.25, 'sawtooth', 0.16, 700);
+    },
+    // Super Saiyan God: bright ascending divine arpeggio
+    ssjg: function(){
+      var notes = [392.0, 523.25, 659.25, 784.0, 987.77];
+      for(var i=0;i<notes.length;i++){
+        tone(notes[i], i*0.09, 0.28, 'sine', 0.12);
+        tone(notes[i]*2, i*0.09, 0.2, 'triangle', 0.05);
+      }
+      noiseBurst(0, 0.5, 0.06, 4000, 'highpass');
+    },
+    // Super Saiyan Blue: crystalline bell chime, cool and sharp
+    ssjb: function(){
+      var notes = [659.25, 987.77, 1318.5];
+      for(var i=0;i<notes.length;i++){
+        tone(notes[i], i*0.1, 0.4, 'triangle', 0.13);
+      }
+      tone(1975.5, 0.3, 0.5, 'sine', 0.08, 2600);
+      noiseBurst(0, 0.3, 0.08, 5000, 'highpass');
+    },
+    // Blue Kaioken: blue chime slammed together with red kaioken aggression
+    ssjbk: function(){
+      tone(659.25, 0, 0.22, 'triangle', 0.13);
+      tone(987.77, 0.05, 0.22, 'triangle', 0.12);
+      tone(140, 0.15, 0.4, 'sawtooth', 0.2, 60);
+      tone(260, 0.2, 0.4, 'sawtooth', 0.16, 900);
+      noiseBurst(0.15, 0.5, 0.22, 2800, 'highpass');
+    },
+    // Ultra Instinct: airy, unpredictable, silver and mysterious
+    ui: function(){
+      tone(300, 0, 0.5, 'sine', 0.07, 900);
+      tone(450, 0.1, 0.45, 'sine', 0.06, 1300);
+      for(var i=0;i<7;i++){
+        tone(600+Math.random()*1800, 0.15+Math.random()*0.5, 0.03, 'sine', 0.04);
+      }
+      noiseBurst(0, 0.6, 0.05, 6000, 'highpass');
+    },
+    // Mastered Ultra Instinct: the whole spectrum, longest and most epic
+    mui: function(){
+      tone(70, 0, 0.7, 'sawtooth', 0.2, 45);
+      tone(300, 0.15, 0.7, 'sine', 0.09, 1000);
+      tone(500, 0.3, 0.6, 'sine', 0.07, 1600);
+      for(var i=0;i<12;i++){
+        tone(500+Math.random()*2200, 0.2+Math.random()*0.7, 0.035, 'sine', 0.045);
+      }
+      noiseBurst(0, 0.9, 0.16, 4500, 'bandpass');
+      tone(180, 0.6, 0.5, 'sawtooth', 0.1, 900);
+    }
+  };
+
+  // Little looping pixel song played while paused
+  var PAUSE_SONG = [
+    {f:523.25, d:0.20}, {f:659.25, d:0.20}, {f:784.00, d:0.20}, {f:659.25, d:0.20},
+    {f:698.46, d:0.20}, {f:587.33, d:0.20}, {f:523.25, d:0.40},
+    {f:440.00, d:0.20}, {f:523.25, d:0.20}, {f:659.25, d:0.20}, {f:523.25, d:0.40}
+  ];
+  var songTimeoutId = null;
+  var songStepIndex = 0;
+
+  function playSongStep(){
+    if(state !== STATE.PAUSED) return;
+    var note = PAUSE_SONG[songStepIndex % PAUSE_SONG.length];
+    tone(note.f, 0, note.d*0.85, 'square', 0.075);
+    tone(note.f/2, 0, note.d*0.85, 'triangle', 0.04);
+    songStepIndex++;
+    songTimeoutId = setTimeout(playSongStep, note.d*1000);
+  }
+
+  function startPauseSong(){
+    ensureAudio();
+    songStepIndex = 0;
+    clearTimeout(songTimeoutId);
+    playSongStep();
+  }
+
+  function stopPauseSong(){
+    clearTimeout(songTimeoutId);
+    songTimeoutId = null;
+  }
+
+  var STATE = { START:0, PLAY:1, OVER:2, PAUSED:3 };
   var state = STATE.START;
 
   var bestScore = 0;
@@ -254,17 +549,57 @@
     { key:'shield', label:'KI SHIELD!', color:'#3fe0ff' },
     { key:'slow', label:'TIME SLOW!', color:'#ff5fd1' }
   ];
+  var prevForm = 'normal';
+
+  // Visual identity for every transformation: hair/eye colors, aura gradient,
+  // particle palette and how "sparky" the aura looks, plus its speed boost.
+  var FORM_STYLES = {
+    normal:  { hair:'#181018', eye:'#181018', speedMult:1.0 },
+    kaioken: { hair:'#181018', eye:'#181018', auraColors:['#ff3b30','#ff7a52','#ffb27a'],
+               glow:['rgba(255,70,60,0.55)','rgba(255,70,60,0)'], sparkChance:0.15, speedMult:1.16 },
+    ssj:     { hair:'#ffe066', eye:'#0aff9e', auraColors:['#ffe066','#fff6c9','#ffd23f'],
+               glow:['rgba(255,220,90,0.6)','rgba(255,220,90,0)'], sparkChance:0.35, speedMult:1.34 },
+    ssj2:    { hair:'#ffe066', eye:'#0aff9e', auraColors:['#ffe066','#fff6c9','#5fe6ff'],
+               glow:['rgba(255,225,110,0.68)','rgba(255,225,110,0)'], sparkChance:0.55, speedMult:1.45, extraSpike:true },
+    ssj3:    { hair:'#fff29e', eye:'#0aff9e', auraColors:['#fff29e','#ffe066','#ffd23f'],
+               glow:['rgba(255,240,160,0.72)','rgba(255,240,160,0)'], sparkChance:0.45, speedMult:1.55, longHair:true },
+    ssj4:    { hair:'#8a3b1e', eye:'#ffcf4d', auraColors:['#ff5a1a','#ffcf4d','#ff2e2e'],
+               glow:['rgba(255,90,26,0.65)','rgba(255,90,26,0)'], sparkChance:0.5, speedMult:1.65, fur:true },
+    ssjg:    { hair:'#e0433f', eye:'#ff9e9e', auraColors:['#ff6b6b','#ffd1d1','#ff4141'],
+               glow:['rgba(255,90,90,0.6)','rgba(255,90,90,0)'], sparkChance:0.2, speedMult:1.75 },
+    ssjb:    { hair:'#4fc3ff', eye:'#bdf0ff', auraColors:['#4fc3ff','#bdf0ff','#1a8fd1'],
+               glow:['rgba(79,195,255,0.65)','rgba(79,195,255,0)'], sparkChance:0.3, speedMult:1.85 },
+    ssjbk:   { hair:'#4fc3ff', eye:'#ffb3b3', auraColors:['#4fc3ff','#ff4d4d','#bdf0ff'],
+               glow:['rgba(255,60,60,0.55)','rgba(79,195,255,0.45)'], sparkChance:0.6, speedMult:1.95, dual:true },
+    ui:      { hair:'#cfd2e8', eye:'#b8b8ff', auraColors:['#cfd2e8','#9ea3ff','#ffffff'],
+               glow:['rgba(180,185,255,0.55)','rgba(180,185,255,0)'], sparkChance:0.4, speedMult:2.1 },
+    mui:     { hair:'#e8e6ff', eye:'#c88bff', auraColors:['#e8e6ff','#c88bff','#8f6bff'],
+               glow:['rgba(200,150,255,0.68)','rgba(15,8,30,0.45)'], sparkChance:0.7, speedMult:2.3, darkOutline:true }
+  };
+
+  var FORM_THRESHOLDS = [
+    ['mui',   1300],
+    ['ui',    1000],
+    ['ssjbk',  750],
+    ['ssjb',   650],
+    ['ssjg',   550],
+    ['ssj4',   400],
+    ['ssj3',   300],
+    ['ssj2',   200],
+    ['ssj',    100],
+    ['kaioken', 50]
+  ];
 
   function formFor(sc){
-    if(sc >= 100) return 'ssj';
-    if(sc >= 50) return 'kaioken';
+    for(var i=0;i<FORM_THRESHOLDS.length;i++){
+      if(sc >= FORM_THRESHOLDS[i][1]) return FORM_THRESHOLDS[i][0];
+    }
     return 'normal';
   }
 
   function speedMultiplier(form){
-    if(form === 'ssj') return 1.34;
-    if(form === 'kaioken') return 1.16;
-    return 1.0;
+    var style = FORM_STYLES[form];
+    return style ? style.speedMult : 1.0;
   }
 
   function resetWorld(){
@@ -280,6 +615,7 @@
     shieldTimer = 0;
     slowTimer = 0;
     floatingTexts = [];
+    prevForm = 'normal';
   }
 
   function spawnCollectible(){
@@ -295,12 +631,16 @@
   }
 
   function applyPowerup(power, x, y){
+    SFX.collect();
     if(power.key === 'bonus'){
       distance += 30*34;
+      SFX.buffBonus();
     } else if(power.key === 'shield'){
       shieldTimer = 180; // 3s @60fps
+      SFX.buffShield();
     } else if(power.key === 'slow'){
       slowTimer = 180;
+      SFX.buffSlow();
     }
     floatingTexts.push({
       x: x, y: y, life: 60, maxLife: 60,
@@ -350,12 +690,9 @@
   --------------------------------------------------------- */
   var particles = [];
   function spawnAuraParticle(form){
-    if(form === 'normal') return;
-    var colorSets = {
-      kaioken: ['#ff3b30','#ff7a52','#ffb27a'],
-      ssj: ['#ffe066','#fff6c9','#ffd23f']
-    };
-    var colors = colorSets[form];
+    var style = FORM_STYLES[form];
+    if(!style || !style.auraColors) return;
+    var colors = style.auraColors;
     var side = Math.random() < 0.5 ? -1 : 1;
     particles.push({
       x: player.x + player.w/2 + side*(player.w/2+2) + (Math.random()*6-3),
@@ -364,9 +701,9 @@
       vy: (Math.random()-0.5)*1.6 - 0.3,
       life: 22 + Math.random()*14,
       maxLife: 30,
-      size: form === 'ssj' ? (1+Math.random()*2.2) : (1+Math.random()*1.6),
+      size: 1 + Math.random()*2.2,
       color: colors[(Math.random()*colors.length)|0],
-      spark: form === 'ssj' && Math.random() < 0.35
+      spark: Math.random() < (style.sparkChance || 0)
     });
   }
 
@@ -619,32 +956,50 @@
     var legSwing = running ? Math.sin(t*0.35) : 0;
     var armSwing = airborne ? -0.8 : Math.sin(t*0.35+Math.PI);
 
-    var haircol = form === 'ssj' ? '#ffe066' : '#181018';
+    var style = FORM_STYLES[form] || FORM_STYLES.normal;
+    var haircol = style.hair;
     var gicol = '#ff7a1a';
     var gishade = '#c95c0f';
     var undercol = '#2255cc';
     var skincol = '#f2b98a';
     var bootcol = '#181018';
-    var eyecol = form === 'ssj' ? '#0aff9e' : '#181018';
+    var eyecol = style.eye;
 
     ctx.save();
     ctx.translate(Math.round(px), Math.round(py));
 
     // ---- aura glow (behind body) ----
-    if(form !== 'normal'){
+    if(style.glow){
       var glowR = 22 + Math.sin(t*0.3)*3;
-      var grad = ctx.createRadialGradient(13,17,4,13,17,glowR);
-      if(form === 'kaioken'){
-        grad.addColorStop(0, 'rgba(255,70,60,0.55)');
-        grad.addColorStop(1, 'rgba(255,70,60,0)');
+      if(style.dual){
+        // two interleaved auras (e.g. Blue Kaioken)
+        var gradA = ctx.createRadialGradient(13,17,4,13,17,glowR);
+        gradA.addColorStop(0, style.glow[0]);
+        gradA.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = gradA;
+        ctx.beginPath(); ctx.arc(13,17,glowR,0,Math.PI*2); ctx.fill();
+        var gradB = ctx.createRadialGradient(13,17,4,13,17,glowR*0.72);
+        gradB.addColorStop(0, style.glow[1]);
+        gradB.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = gradB;
+        ctx.beginPath(); ctx.arc(13,17,glowR*0.72,0,Math.PI*2); ctx.fill();
       } else {
-        grad.addColorStop(0, 'rgba(255,220,90,0.6)');
-        grad.addColorStop(1, 'rgba(255,220,90,0)');
+        var grad = ctx.createRadialGradient(13,17,4,13,17,glowR);
+        grad.addColorStop(0, style.glow[0]);
+        grad.addColorStop(1, style.glow[1]);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(13,17,glowR,0,Math.PI*2);
+        ctx.fill();
       }
-      ctx.fillStyle = grad;
-      ctx.beginPath();
-      ctx.arc(13,17,glowR,0,Math.PI*2);
-      ctx.fill();
+      if(style.darkOutline){
+        // Mastered Ultra Instinct's dark aura fringe
+        ctx.strokeStyle = 'rgba(20,10,40,0.5)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(13,17,glowR*0.9,0,Math.PI*2);
+        ctx.stroke();
+      }
     }
 
     // ---- legs ----
@@ -709,10 +1064,31 @@
     ctx.fillRect(15, -4, 4, 7);
     ctx.fillRect(20, -1, 4, 6);
     ctx.fillRect(2, 3, 3, 4);
-    if(form === 'ssj'){
+
+    if(form !== 'normal' && form !== 'kaioken'){
+      // super forms get a raised center spike
       ctx.fillRect(11, -7, 3, 5);
       ctx.fillStyle = 'rgba(255,255,255,0.5)';
       ctx.fillRect(11, -8, 3, 2);
+      ctx.fillStyle = haircol;
+    }
+    if(style.extraSpike){
+      ctx.fillRect(1, -1, 3, 4);
+      ctx.fillRect(22, -3, 3, 5);
+    }
+    if(style.longHair){
+      // trailing strands down the back (SSJ3-style)
+      ctx.fillRect(21, 3, 3, 16);
+      ctx.fillRect(23, 8, 2, 12);
+    }
+    if(style.fur){
+      // fur-trimmed silhouette (SSJ4-style)
+      ctx.fillRect(3, -2, 3, 4);
+      ctx.fillRect(20, -4, 3, 4);
+      ctx.fillStyle = '#ffcf4d';
+      ctx.fillRect(9, 24, 4, 2);
+      ctx.fillRect(15, 24, 4, 2);
+      ctx.fillStyle = haircol;
     }
 
     ctx.restore();
@@ -722,22 +1098,50 @@
      Input
   --------------------------------------------------------- */
   function flap(){
+    ensureAudio();
     if(state === STATE.START){
       startGame();
       return;
     }
-    if(state === STATE.OVER){
+    if(state === STATE.OVER || state === STATE.PAUSED){
       return;
     }
     player.vy = FLAP_VY;
     player.grounded = false;
+    SFX.jump();
+  }
+
+  function togglePause(){
+    if(state === STATE.PLAY){
+      state = STATE.PAUSED;
+      pauseScreen.classList.remove('hidden');
+      pauseBtn.textContent = '►';
+      pauseBtn.setAttribute('aria-label','Resume');
+      startPauseSong();
+    } else if(state === STATE.PAUSED){
+      state = STATE.PLAY;
+      pauseScreen.classList.add('hidden');
+      pauseBtn.textContent = '❚❚';
+      pauseBtn.setAttribute('aria-label','Pause');
+      stopPauseSong();
+    }
   }
 
   window.addEventListener('keydown', function(e){
     if(e.code === 'Space' || e.key === ' '){
       e.preventDefault();
       if(state === STATE.OVER){ startGame(); }
+      else if(state === STATE.PAUSED){ togglePause(); }
       else { flap(); }
+    } else if(e.code === 'KeyP' || e.key === 'Escape'){
+      if(state === STATE.PLAY || state === STATE.PAUSED){
+        e.preventDefault();
+        togglePause();
+      }
+    } else if(e.code === 'KeyM'){
+      e.preventDefault();
+      ensureAudio();
+      setMuted(!muted);
     }
   });
   canvas.addEventListener('mousedown', function(e){
@@ -751,16 +1155,39 @@
 
   startBtn.addEventListener('click', startGame);
   restartBtn.addEventListener('click', startGame);
+  pauseBtn.addEventListener('click', function(e){
+    e.preventDefault();
+    ensureAudio();
+    togglePause();
+  });
+  resumeBtn.addEventListener('click', function(e){
+    e.preventDefault();
+    togglePause();
+  });
+  muteBtn.addEventListener('click', function(e){
+    e.preventDefault();
+    ensureAudio();
+    setMuted(!muted);
+  });
+  muteBtn.textContent = muted ? '🔇' : '🔊';
+  muteBtn.classList.toggle('muted', muted);
 
   function startGame(){
+    ensureAudio();
+    stopPauseSong();
     resetWorld();
     resetPlayer();
     state = STATE.PLAY;
     startScreen.classList.add('hidden');
     gameOverScreen.classList.add('hidden');
+    pauseScreen.classList.add('hidden');
+    pauseBtn.classList.remove('hidden');
+    pauseBtn.textContent = '❚❚';
   }
 
   function gameOver(){
+    SFX.hit();
+    stopPauseSong();
     state = STATE.OVER;
     if(score > bestScore){
       bestScore = score;
@@ -769,6 +1196,7 @@
     finalScoreEl.textContent = score;
     bestScoreEl.textContent = bestScore;
     gameOverScreen.classList.remove('hidden');
+    pauseBtn.classList.add('hidden');
   }
 
   /* ---------------------------------------------------------
@@ -839,6 +1267,10 @@
       player.grounded = false;
     }
 
+    if(player.grounded && frameCount % 9 === 0){
+      SFX.step();
+    }
+
     // fell below screen (pit death safety)
     if(player.y > H + 20){
       if(shieldTimer > 0){
@@ -854,6 +1286,12 @@
     distance += speed;
     score = Math.floor(distance / 34);
     scoreLiveEl.textContent = score;
+
+    var currentForm = formFor(score);
+    if(currentForm !== prevForm){
+      if(SFX[currentForm]) SFX[currentForm]();
+      prevForm = currentForm;
+    }
 
     for(var i=obstacles.length-1;i>=0;i--){
       obstacles[i].x -= speed;
