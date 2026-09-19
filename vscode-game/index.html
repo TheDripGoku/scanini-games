@@ -100,7 +100,7 @@
 
   .subtitle{
     font-size:clamp(10px,1.8vw,15px);
-    color:#f8f8f8;
+    color:#b9b3ff;
     line-height:1.7;
     max-width:520px;
   }
@@ -137,7 +137,7 @@
 
   .footnote{
     position:absolute; bottom:6px; right:8px;
-    font-size:9px; color:#f2f1f7;
+    font-size:9px; color:#4b437f;
     z-index:5; pointer-events:none;
   }
 </style>
@@ -157,7 +157,9 @@
       TAP <b>SPACE</b> OR <b>CLICK</b> TO JUMP.<br>
       TAP REPEATEDLY TO HOVER OVER PITS.<br>
       DODGE THE ENERGY PILLARS.<br><br>
-      0&ndash;49: NORMAL &nbsp;|&nbsp; 50&ndash;99: <span style="color:var(--accent-2)">KAIOKEN</span> &nbsp;|&nbsp; 100+: <span style="color:var(--accent)">SUPER SAIYAN</span>
+      0&ndash;49: NORMAL &nbsp;|&nbsp; 50&ndash;99: <span style="color:var(--accent-2)">KAIOKEN</span> &nbsp;|&nbsp; 100+: <span style="color:var(--accent)">SUPER SAIYAN</span><br><br>
+      GRAB GLOWING <span style="color:var(--accent)">DRAGON BALLS</span> FOR A RANDOM POWER-UP:<br>
+      BONUS SCORE &middot; KI SHIELD &middot; TIME SLOW
     </div>
     <button class="arcade-btn" id="startBtn">START GAME</button>
     <div class="subtitle blink pixel-font" style="margin-top:-4px;">PRESS SPACE TO BEGIN</div>
@@ -174,29 +176,6 @@
 </div>
 
 <script>
-    // Retro 8-bit jump sound synthesizer
-const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-
-function playJumpSound() {
-  if (audioCtx.state === 'suspended') {
-    audioCtx.resume();
-  }
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-
-  osc.type = 'square'; // Classic retro sound
-  osc.frequency.setValueAtTime(180, audioCtx.currentTime);
-  osc.frequency.exponentialRampToValueAtTime(600, audioCtx.currentTime + 0.12);
-
-  gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
-  gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.12);
-
-  osc.connect(gain);
-  gain.connect(audioCtx.destination);
-
-  osc.start();
-  osc.stop(audioCtx.currentTime + 0.12);
-}
 (function(){
   "use strict";
 
@@ -263,6 +242,19 @@ function playJumpSound() {
   var spawnTimer = 0;
   var frameCount = 0;
 
+  // Random feature: floating Dragon Ball power-up pickups
+  var collectibles = [];
+  var collectTimer = 0;
+  var shieldTimer = 0;   // invincibility (frames)
+  var slowTimer = 0;     // world slow-mo (frames)
+  var floatingTexts = [];
+
+  var POWERUPS = [
+    { key:'bonus', label:'+30 SCORE', color:'#ffe066' },
+    { key:'shield', label:'KI SHIELD!', color:'#3fe0ff' },
+    { key:'slow', label:'TIME SLOW!', color:'#ff5fd1' }
+  ];
+
   function formFor(sc){
     if(sc >= 100) return 'ssj';
     if(sc >= 50) return 'kaioken';
@@ -283,6 +275,37 @@ function playJumpSound() {
     spawnTimer = 90;
     frameCount = 0;
     particles.length = 0;
+    collectibles = [];
+    collectTimer = 140;
+    shieldTimer = 0;
+    slowTimer = 0;
+    floatingTexts = [];
+  }
+
+  function spawnCollectible(){
+    var y = 40 + Math.random() * (GROUND_Y - 90);
+    collectibles.push({
+      x: W + 20,
+      y: y,
+      r: 6,
+      bob: Math.random()*Math.PI*2,
+      power: POWERUPS[(Math.random()*POWERUPS.length)|0]
+    });
+    collectTimer = 260 + Math.random()*260;
+  }
+
+  function applyPowerup(power, x, y){
+    if(power.key === 'bonus'){
+      distance += 30*34;
+    } else if(power.key === 'shield'){
+      shieldTimer = 180; // 3s @60fps
+    } else if(power.key === 'slow'){
+      slowTimer = 180;
+    }
+    floatingTexts.push({
+      x: x, y: y, life: 60, maxLife: 60,
+      text: power.label, color: power.color
+    });
   }
 
   function spawnObstacle(){
@@ -546,6 +569,48 @@ function playJumpSound() {
     }
   }
 
+  function drawCollectibles(){
+    for(var i=0;i<collectibles.length;i++){
+      var c = collectibles[i];
+      var y = c.y + Math.sin(c.bob)*4;
+      var glow = ctx.createRadialGradient(c.x, y, 1, c.x, y, 12);
+      glow.addColorStop(0, 'rgba(255,190,50,0.65)');
+      glow.addColorStop(1, 'rgba(255,190,50,0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(c.x, y, 12, 0, Math.PI*2);
+      ctx.fill();
+
+      ctx.fillStyle = '#ff9d1a';
+      ctx.beginPath();
+      ctx.arc(c.x, y, c.r, 0, Math.PI*2);
+      ctx.fill();
+      ctx.fillStyle = '#ffe6b0';
+      ctx.beginPath();
+      ctx.arc(c.x - 1.5, y - 1.5, c.r*0.35, 0, Math.PI*2);
+      ctx.fill();
+      ctx.fillStyle = '#c94b1a';
+      ctx.font = '7px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('\u2605', c.x, y+2.5);
+    }
+  }
+
+  function drawFloatingTexts(){
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 10px monospace';
+    for(var i=0;i<floatingTexts.length;i++){
+      var ft = floatingTexts[i];
+      var a = Math.max(ft.life / ft.maxLife, 0);
+      ctx.globalAlpha = a;
+      ctx.fillStyle = '#000';
+      ctx.fillText(ft.text, ft.x+1, ft.y+1);
+      ctx.fillStyle = ft.color;
+      ctx.fillText(ft.text, ft.x, ft.y);
+      ctx.globalAlpha = 1;
+    }
+  }
+
   /* ---------------------------------------------------------
      Goku sprite (pixel-block style)
   --------------------------------------------------------- */
@@ -666,7 +731,6 @@ function playJumpSound() {
     }
     player.vy = FLAP_VY;
     player.grounded = false;
-    playJumpSound();
   }
 
   window.addEventListener('keydown', function(e){
@@ -758,6 +822,8 @@ function playJumpSound() {
     var form = formFor(score);
     var mult = speedMultiplier(form);
     speed = baseSpeed * mult + Math.min(score*0.012, 1.6);
+    if(shieldTimer > 0) shieldTimer--;
+    if(slowTimer > 0){ slowTimer--; speed *= 0.5; }
 
     // physics
     player.vy += GRAVITY;
@@ -775,8 +841,13 @@ function playJumpSound() {
 
     // fell below screen (pit death safety)
     if(player.y > H + 20){
-      gameOver();
-      return;
+      if(shieldTimer > 0){
+        player.y = GROUND_Y - player.h;
+        player.vy = FLAP_VY;
+      } else {
+        gameOver();
+        return;
+      }
     }
 
     // world scroll
@@ -795,13 +866,41 @@ function playJumpSound() {
       spawnObstacle();
     }
 
+    // collectibles: move, bob, spawn, pick up
+    collectTimer -= 1;
+    if(collectTimer <= 0){
+      spawnCollectible();
+    }
+    for(var ci=collectibles.length-1; ci>=0; ci--){
+      var c = collectibles[ci];
+      c.x -= speed;
+      c.bob += 0.08;
+      if(c.x < -20){
+        collectibles.splice(ci,1);
+        continue;
+      }
+      var dx = (player.x+player.w/2) - c.x;
+      var dy = (player.y+player.h/2) - (c.y + Math.sin(c.bob)*4);
+      if(Math.sqrt(dx*dx+dy*dy) < c.r + player.w*0.35){
+        applyPowerup(c.power, c.x, c.y);
+        collectibles.splice(ci,1);
+      }
+    }
+
+    for(var fi=floatingTexts.length-1; fi>=0; fi--){
+      var ft = floatingTexts[fi];
+      ft.y -= 0.5;
+      ft.life--;
+      if(ft.life <= 0) floatingTexts.splice(fi,1);
+    }
+
     // aura particles
     if(form !== 'normal' && frameCount % 2 === 0){
       spawnAuraParticle(form);
     }
     updateParticles();
 
-    if(checkCollisions()){
+    if(shieldTimer <= 0 && checkCollisions()){
       gameOver();
     }
   }
@@ -814,12 +913,26 @@ function playJumpSound() {
     drawBackground();
     drawGround();
     drawObstacles();
+    drawCollectibles();
 
     var form = formFor(score);
     var running = player.grounded;
     var airborne = !player.grounded;
     drawParticles();
+
+    if(shieldTimer > 0 && (frameCount % 8 < 5)){
+      ctx.save();
+      ctx.strokeStyle = '#3fe0ff';
+      ctx.lineWidth = 2;
+      ctx.globalAlpha = 0.85;
+      ctx.beginPath();
+      ctx.arc(player.x + player.w/2, player.y + player.h/2, player.w*0.85, 0, Math.PI*2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
     drawGoku(player.x, player.y, form, running, airborne);
+    drawFloatingTexts();
 
     if(state === STATE.START){
       // idle preview already shown via HTML overlay
