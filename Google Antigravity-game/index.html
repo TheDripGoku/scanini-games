@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Goku Runner: Infinite Hover</title>
 <style>
   body {
@@ -19,13 +19,35 @@
   }
   #game-container {
     position: relative;
+    width: 100vw;
+    height: 50vw;
+    max-width: 900px;
+    max-height: 450px;
     box-shadow: 0 0 25px rgba(0, 0, 0, 0.9);
     border-radius: 4px;
     overflow: hidden;
+    background-color: #000;
+  }
+  #game-container:fullscreen {
+    max-width: none;
+    max-height: none;
+    width: 100vw;
+    height: 100vh;
+    border-radius: 0;
+  }
+  #game-container:-webkit-full-screen {
+    max-width: none;
+    max-height: none;
+    width: 100vw;
+    height: 100vh;
+    border-radius: 0;
   }
   canvas {
     background-color: #1a1a2e;
     display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
   }
   #ui {
     position: absolute;
@@ -106,11 +128,68 @@
     font-size: 14px;
     pointer-events: none;
   }
+  .control-btn {
+    background: rgba(255, 255, 255, 0.15);
+    border: 2px solid rgba(255, 255, 255, 0.4);
+    color: #fff;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 16px;
+    z-index: 20;
+    position: absolute;
+    top: 15px;
+    transition: background 0.2s;
+  }
+  .control-btn:hover {
+    background: rgba(255, 255, 255, 0.4);
+  }
+  #fullscreen-btn {
+    left: 15px;
+  }
+  #top-right-controls {
+    right: 15px;
+    position: absolute;
+    top: 15px;
+    display: flex;
+    gap: 10px;
+    z-index: 20;
+  }
+  #top-right-controls .control-btn {
+    position: relative;
+    top: 0;
+    left: 0;
+    right: 0;
+  }
+  #paused-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 48px;
+    z-index: 15;
+    pointer-events: none;
+    display: none;
+    letter-spacing: 2px;
+  }
 </style>
 </head>
 <body>
 
 <div id="game-container">
+  <button id="fullscreen-btn" class="control-btn" title="Fullscreen">⛶</button>
+  <div id="top-right-controls">
+    <button id="mute-btn" class="control-btn" title="Mute">🔊</button>
+    <button id="pause-btn" class="control-btn" title="Pause">⏸</button>
+  </div>
+  <div id="paused-overlay">PAUSED</div>
+
   <div id="ui">
     <div id="score-display">Score: 0</div>
     <div id="message-display">KAIOKEN!</div>
@@ -143,7 +222,7 @@
 
   const sfx = {
     playJump: () => {
-      if(!audioCtx) return;
+      if(!audioCtx || isMuted) return;
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
       osc.connect(gain);
@@ -157,7 +236,7 @@
       osc.stop(audioCtx.currentTime + 0.15);
     },
     playRun: () => {
-      if(!audioCtx) return;
+      if(!audioCtx || isMuted) return;
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
       osc.connect(gain);
@@ -170,38 +249,18 @@
       osc.start();
       osc.stop(audioCtx.currentTime + 0.05);
     },
-    playKaioken: () => {
-      if(!audioCtx) return;
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.type = 'sawtooth'; // Fiery rising pulse
-      osc.frequency.setValueAtTime(60, audioCtx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(300, audioCtx.currentTime + 0.6);
-      gain.gain.setValueAtTime(0, audioCtx.currentTime);
-      gain.gain.linearRampToValueAtTime(0.15, audioCtx.currentTime + 0.3);
-      gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.6);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.6);
-    },
-    playSSJ: () => {
-      if(!audioCtx) return;
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.type = 'square'; // Aggressive explosive surge
-      osc.frequency.setValueAtTime(150, audioCtx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(900, audioCtx.currentTime + 1.0);
-      gain.gain.setValueAtTime(0, audioCtx.currentTime);
-      gain.gain.linearRampToValueAtTime(0.15, audioCtx.currentTime + 0.1);
-      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 1.0);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 1.0);
-    },
+    play_kaioken: () => playFormSound('sawtooth', 60, 300, 0.6),
+    play_ssj: () => playFormSound('square', 150, 900, 1.0),
+    play_ssj2: () => playFormSound('square', 200, 1200, 1.2),
+    play_ssj3: () => playFormSound('sawtooth', 80, 1500, 1.5, 'square'),
+    play_ssj4: () => playFormSound('sawtooth', 40, 200, 1.5),
+    play_ssjg: () => playFormSound('sine', 400, 1500, 1.0),
+    play_ssjb: () => playFormSound('triangle', 300, 1200, 1.2),
+    play_ssjbk: () => playFormSound('sawtooth', 100, 1400, 1.2, 'triangle'),
+    play_ui: () => playFormSound('sine', 800, 2500, 0.8),
+    play_mui: () => playFormSound('sine', 1000, 3000, 1.5, 'sine'),
     playDeath: () => {
-      if(!audioCtx) return;
+      if(!audioCtx || isMuted) return;
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
       osc.connect(gain);
@@ -216,6 +275,37 @@
     }
   };
 
+  function playFormSound(type1, freq1, freq2, duration, type2=null) {
+    if(!audioCtx || isMuted) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.type = type1;
+    osc.frequency.setValueAtTime(freq1, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(freq2, audioCtx.currentTime + duration);
+    gain.gain.setValueAtTime(0, audioCtx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.15, audioCtx.currentTime + Math.min(0.2, duration/2));
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+    osc.start();
+    osc.stop(audioCtx.currentTime + duration);
+    
+    if (type2) {
+      const osc2 = audioCtx.createOscillator();
+      const gain2 = audioCtx.createGain();
+      osc2.connect(gain2);
+      gain2.connect(audioCtx.destination);
+      osc2.type = type2;
+      osc2.frequency.setValueAtTime(freq2/2, audioCtx.currentTime);
+      osc2.frequency.exponentialRampToValueAtTime(freq1, audioCtx.currentTime + duration);
+      gain2.gain.setValueAtTime(0, audioCtx.currentTime);
+      gain2.gain.linearRampToValueAtTime(0.1, audioCtx.currentTime + 0.1);
+      gain2.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+      osc2.start();
+      osc2.stop(audioCtx.currentTime + duration);
+    }
+  };
+
   const canvas = document.getElementById('gameCanvas');
   const ctx = canvas.getContext('2d');
   const scoreDisplay = document.getElementById('score-display');
@@ -223,6 +313,10 @@
   const gameOverScreen = document.getElementById('game-over');
   const finalScoreDisplay = document.getElementById('final-score');
   const restartBtn = document.getElementById('restart-btn');
+  const fullscreenBtn = document.getElementById('fullscreen-btn');
+  const muteBtn = document.getElementById('mute-btn');
+  const pauseBtn = document.getElementById('pause-btn');
+  const pausedOverlay = document.getElementById('paused-overlay');
 
   // Game configuration
   const GROUND_Y = 360;
@@ -230,9 +324,12 @@
   const JUMP_STRENGTH = -7.5;
   
   let frames = 0;
+  let nextSpawnFrame = 130;
   let score = 0;
   let gameSpeed = 5;
   let isGameOver = false;
+  let isPaused = false;
+  let isMuted = false;
   let animationId;
   let currentFormMessage = '';
   let messageTimer = 0;
@@ -294,43 +391,74 @@
       }
 
       // Form updates
-      if (score >= 26 && this.form !== 'ssj') {
-        this.form = 'ssj';
-        showMessage("SUPER SAIYAN!");
-        sfx.playSSJ();
-      } else if (score >= 11 && score < 26 && this.form !== 'kaioken') {
-        this.form = 'kaioken';
-        showMessage("KAIOKEN x10!");
-        sfx.playKaioken();
+      let nextForm = this.form;
+      let msg = "";
+      if (score >= 130) { nextForm = 'mui'; msg = "MASTERED ULTRA INSTINCT!"; }
+      else if (score >= 100) { nextForm = 'ui'; msg = "ULTRA INSTINCT!"; }
+      else if (score >= 75) { nextForm = 'ssjbk'; msg = "SSB KAIOKEN!"; }
+      else if (score >= 65) { nextForm = 'ssjb'; msg = "SUPER SAIYAN BLUE!"; }
+      else if (score >= 55) { nextForm = 'ssjg'; msg = "SUPER SAIYAN GOD!"; }
+      else if (score >= 40) { nextForm = 'ssj4'; msg = "SUPER SAIYAN 4!"; }
+      else if (score >= 30) { nextForm = 'ssj3'; msg = "SUPER SAIYAN 3!"; }
+      else if (score >= 20) { nextForm = 'ssj2'; msg = "SUPER SAIYAN 2!"; }
+      else if (score >= 15) { nextForm = 'ssj'; msg = "SUPER SAIYAN!"; }
+      else if (score >= 5) { nextForm = 'kaioken'; msg = "KAIOKEN!"; }
+
+      if (nextForm !== this.form && score > 0) {
+        this.form = nextForm;
+        showMessage(msg);
+        if(sfx['play_' + this.form]) sfx['play_' + this.form]();
       }
     }
 
     draw(ctx) {
+      // Form Configurations
+      let auraColor = null, sparkChance = 0, hairColor = '#000', hairStyle = 'normal';
+      let giColor = '#ff7f00', underColor = '#0000ff';
+      let isSSJ4 = false;
+
+      switch(this.form) {
+        case 'kaioken': auraColor = 'rgba(255, 30, 30, 0.4)'; break;
+        case 'ssj': auraColor = 'rgba(255, 255, 50, 0.5)'; sparkChance = 0.05; hairColor = '#ffd700'; hairStyle = 'ssj'; break;
+        case 'ssj2': auraColor = 'rgba(255, 255, 50, 0.6)'; sparkChance = 0.15; hairColor = '#ffd700'; hairStyle = 'ssj2'; break;
+        case 'ssj3': auraColor = 'rgba(255, 255, 50, 0.7)'; sparkChance = 0.25; hairColor = '#ffd700'; hairStyle = 'ssj3'; break;
+        case 'ssj4': auraColor = 'rgba(255, 30, 30, 0.5)'; hairColor = '#000'; hairStyle = 'ssj4'; isSSJ4 = true; giColor = '#ff3333'; underColor = '#fada5e'; break;
+        case 'ssjg': auraColor = 'rgba(255, 50, 50, 0.6)'; hairColor = '#ff3333'; hairStyle = 'normal'; break;
+        case 'ssjb': auraColor = 'rgba(50, 150, 255, 0.6)'; hairColor = '#00ccff'; hairStyle = 'ssj'; break;
+        case 'ssjbk': auraColor = 'rgba(255, 30, 30, 0.5)'; hairColor = '#00ccff'; hairStyle = 'ssj'; sparkChance = 0.1; break;
+        case 'ui': auraColor = 'rgba(200, 200, 255, 0.5)'; hairColor = '#333333'; hairStyle = 'normal'; break;
+        case 'mui': auraColor = 'rgba(255, 255, 255, 0.8)'; hairColor = '#ffffff'; hairStyle = 'ssj2'; sparkChance = 0.3; break;
+      }
+
       // Draw Aura
-      if (this.form === 'kaioken') {
-        ctx.fillStyle = 'rgba(255, 30, 30, 0.4)';
-        let auraSize = Math.sin(this.animTick * 0.2) * 5 + 10;
-        ctx.beginPath();
-        ctx.ellipse(this.x + this.width/2, this.y + this.height/2, this.width/2 + auraSize, this.height/2 + auraSize, 0, 0, Math.PI * 2);
-        ctx.fill();
-      } else if (this.form === 'ssj') {
-        ctx.fillStyle = 'rgba(255, 255, 50, 0.5)';
+      if (auraColor) {
+        ctx.fillStyle = auraColor;
         let auraSize = Math.sin(this.animTick * 0.3) * 8 + 15;
+        if(this.form === 'ssj3' || this.form === 'mui') auraSize += 10;
+        
         ctx.beginPath();
         ctx.ellipse(this.x + this.width/2, this.y + this.height/2, this.width/2 + auraSize, this.height/2 + auraSize, 0, 0, Math.PI * 2);
         ctx.fill();
 
-        // Electrical sparks
-        if (this.animTick % 4 === 0) {
-          ctx.strokeStyle = '#fff';
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          let sx = this.x - 10 + Math.random() * (this.width + 20);
-          let sy = this.y - 10 + Math.random() * (this.height + 20);
-          ctx.moveTo(sx, sy);
-          ctx.lineTo(sx + (Math.random() - 0.5) * 30, sy + (Math.random() - 0.5) * 30);
-          ctx.stroke();
+        if (this.form === 'ssjbk') {
+           // Inner blue aura
+           ctx.fillStyle = 'rgba(50, 150, 255, 0.6)';
+           ctx.beginPath();
+           ctx.ellipse(this.x + this.width/2, this.y + this.height/2, this.width/2 + auraSize - 5, this.height/2 + auraSize - 5, 0, 0, Math.PI * 2);
+           ctx.fill();
         }
+      }
+
+      // Sparks
+      if (sparkChance > 0 && Math.random() < sparkChance) {
+        ctx.strokeStyle = (this.form === 'mui') ? '#e0e0ff' : '#fff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        let sx = this.x - 10 + Math.random() * (this.width + 20);
+        let sy = this.y - 10 + Math.random() * (this.height + 20);
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(sx + (Math.random() - 0.5) * 40, sy + (Math.random() - 0.5) * 40);
+        ctx.stroke();
       }
 
       // Draw Retro Goku Base
@@ -338,21 +466,42 @@
       ctx.fillRect(this.x + 8, this.y + 10, 16, 12); // Face
 
       // Hair
-      ctx.fillStyle = this.form === 'ssj' ? '#ffd700' : '#000';
+      ctx.fillStyle = hairColor;
       ctx.beginPath();
-      if (this.form === 'ssj') {
-        // SSJ Spiky Hair (Tall and wide)
+      if (hairStyle === 'ssj' || hairStyle === 'ssj2' || hairStyle === 'mui') {
+        let spikeH = hairStyle === 'ssj2' ? 25 : 18;
+        if(hairStyle==='mui') spikeH = 22;
         ctx.moveTo(this.x, this.y + 12);
         ctx.lineTo(this.x - 8, this.y - 8);
         ctx.lineTo(this.x + 5, this.y + 2);
-        ctx.lineTo(this.x + 8, this.y - 18);
+        ctx.lineTo(this.x + 8, this.y - spikeH);
         ctx.lineTo(this.x + 16, this.y - 2);
-        ctx.lineTo(this.x + 24, this.y - 18);
+        ctx.lineTo(this.x + 24, this.y - spikeH);
         ctx.lineTo(this.x + 26, this.y + 2);
         ctx.lineTo(this.x + 40, this.y - 8);
         ctx.lineTo(this.x + 32, this.y + 12);
+      } else if (hairStyle === 'ssj3') {
+        ctx.moveTo(this.x + 12, this.y + 10);
+        ctx.lineTo(this.x + 5, this.y - 10);
+        ctx.lineTo(this.x - 5, this.y - 20);
+        ctx.lineTo(this.x - 20, this.y - 15);
+        ctx.lineTo(this.x - 35, this.y - 5);
+        ctx.lineTo(this.x - 45, this.y + 10);
+        ctx.lineTo(this.x - 40, this.y + 25);
+        ctx.lineTo(this.x - 25, this.y + 35);
+        ctx.lineTo(this.x - 10, this.y + 15);
+        ctx.lineTo(this.x, this.y + 12);
+      } else if (hairStyle === 'ssj4') {
+        ctx.moveTo(this.x - 5, this.y + 20);
+        ctx.lineTo(this.x - 12, this.y + 5);
+        ctx.lineTo(this.x + 5, this.y - 5);
+        ctx.lineTo(this.x + 20, this.y - 10);
+        ctx.lineTo(this.x + 35, this.y + 5);
+        ctx.lineTo(this.x + 42, this.y + 20);
+        ctx.lineTo(this.x + 25, this.y + 10);
+        ctx.lineTo(this.x + 10, this.y + 10);
       } else {
-        // Normal Hair (Milder spikes)
+        // Normal Hair
         ctx.moveTo(this.x - 2, this.y + 12);
         ctx.lineTo(this.x - 12, this.y + 5);
         ctx.lineTo(this.x + 4, this.y + 2);
@@ -363,20 +512,33 @@
       }
       ctx.fill();
 
-      // Body (Orange Gi)
-      ctx.fillStyle = '#ff7f00';
+      // Body
+      ctx.fillStyle = giColor;
       ctx.fillRect(this.x + 6, this.y + 22, 20, 14);
       
-      // Blue undershirt
-      ctx.fillStyle = '#0000ff';
+      ctx.fillStyle = underColor;
       ctx.fillRect(this.x + 10, this.y + 22, 12, 5);
+      
+      // If SSJ4, draw red fur on arms and tail
+      if (isSSJ4) {
+         ctx.fillStyle = '#ff3333';
+         ctx.fillRect(this.x + 4, this.y + 22, 4, 14);
+         ctx.fillRect(this.x + 24, this.y + 22, 4, 14);
+         
+         ctx.beginPath();
+         ctx.moveTo(this.x + 6, this.y + 34);
+         ctx.quadraticCurveTo(this.x - 20, this.y + 40, this.x - 15, this.y + 20);
+         ctx.lineWidth = 4;
+         ctx.strokeStyle = '#ff3333';
+         ctx.stroke();
+      }
 
       // Belt
-      ctx.fillStyle = '#0000ff';
+      ctx.fillStyle = underColor;
       ctx.fillRect(this.x + 5, this.y + 36, 22, 4);
 
       // Legs / Pants
-      ctx.fillStyle = '#ff7f00';
+      ctx.fillStyle = giColor;
       // Animate walking if grounded
       if (this.isGrounded && !isGameOver) {
         if (Math.floor(this.animTick / 10) % 2 === 0) {
@@ -484,18 +646,25 @@
 
   function jump() {
     initAudio();
-    if (isGameOver) return;
+    if (isGameOver || isPaused) return;
     player.vy = JUMP_STRENGTH;
     player.isGrounded = false;
     sfx.playJump();
     
     // Spawn small jump/hover particles
-    if (player.form === 'kaioken') {
-      particles.push(new Particle(player.x + 15, player.y + player.height, '#ff3333'));
-    } else if (player.form === 'ssj') {
-      particles.push(new Particle(player.x + 15, player.y + player.height, '#ffff33'));
-    } else {
-      particles.push(new Particle(player.x + 15, player.y + player.height, '#ffffff'));
+    particles.push(new Particle(player.x + 15, player.y + player.height, getFormColor(player.form)));
+  }
+
+  function getFormColor(form) {
+    switch(form) {
+      case 'kaioken': return '#ff3333';
+      case 'ssj': case 'ssj2': case 'ssj3': return '#ffff33';
+      case 'ssj4': return '#ff3333';
+      case 'ssjg': return '#ff3333';
+      case 'ssjb': case 'ssjbk': return '#00ccff';
+      case 'ui': return '#e0e0e0';
+      case 'mui': return '#ffffff';
+      default: return '#ffffff';
     }
   }
 
@@ -507,13 +676,56 @@
   });
 
   window.addEventListener('mousedown', (e) => {
-    if (e.target !== restartBtn) {
+    if (e.target !== restartBtn && !e.target.classList.contains('control-btn')) {
       jump();
     }
   });
 
+  // Touch event for mobile so they don't have to wait for mousedown (which includes delay sometimes)
+  window.addEventListener('touchstart', (e) => {
+    if (e.target !== restartBtn && !e.target.classList.contains('control-btn')) {
+      e.preventDefault(); // prevent duplicate mousedown
+      jump();
+    }
+  }, {passive: false});
+
   restartBtn.addEventListener('click', () => {
     initGame();
+  });
+
+  fullscreenBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    let container = document.getElementById('game-container');
+    if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+      if(container.requestFullscreen) {
+        container.requestFullscreen();
+      } else if(container.webkitRequestFullscreen) {
+        container.webkitRequestFullscreen();
+      }
+    } else {
+      if(document.exitFullscreen) {
+        document.exitFullscreen();
+      } else if(document.webkitExitFullscreen) {
+        document.webkitExitFullscreen();
+      }
+    }
+  });
+
+  muteBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    isMuted = !isMuted;
+    muteBtn.innerText = isMuted ? '🔇' : '🔊';
+  });
+
+  pauseBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if(isGameOver) return;
+    isPaused = !isPaused;
+    pauseBtn.innerText = isPaused ? '▶' : '⏸';
+    pausedOverlay.style.display = isPaused ? 'flex' : 'none';
+    if(!isPaused) {
+      updateGame();
+    }
   });
 
   function showMessage(text) {
@@ -540,6 +752,7 @@
     pits = [];
     particles = [];
     frames = 0;
+    nextSpawnFrame = 100;
     score = 0;
     gameSpeed = 5.5;
     isGameOver = false;
@@ -548,6 +761,10 @@
     scoreDisplay.innerText = 'Score: 0';
     messageDisplay.style.opacity = 0;
     
+    isPaused = false;
+    pauseBtn.innerText = '⏸';
+    pausedOverlay.style.display = 'none';
+    
     initEnvironment();
     
     if(animationId) cancelAnimationFrame(animationId);
@@ -555,10 +772,10 @@
   }
 
   function spawnObstacles() {
-    // Spawn rate speeds up as game goes faster
-    let spawnRate = Math.max(50, Math.floor(130 - score * 2.5));
-    
-    if (frames % spawnRate === 0 && frames > 30) {
+    if (frames >= nextSpawnFrame) {
+      let spawnRate = Math.max(50, Math.floor(130 - score * 2.5));
+      nextSpawnFrame = frames + spawnRate;
+      
       // 35% chance for a pit, 65% for an energy pillar
       if (Math.random() < 0.35) {
         // Make sure previous isn't also a massive pit too close
@@ -604,13 +821,17 @@
   function updateDifficulty() {
     scoreDisplay.innerText = 'Score: ' + score;
     
-    if (score >= 26) {
-      gameSpeed = 9.5 + (score - 26) * 0.15;
-    } else if (score >= 11) {
-      gameSpeed = 7.5 + (score - 11) * 0.12;
-    } else {
-      gameSpeed = 5.5 + score * 0.1;
-    }
+    if (score >= 130) { gameSpeed = 16.0 + (score - 130) * 0.1; }
+    else if (score >= 100) { gameSpeed = 14.5 + (score - 100) * 0.05; }
+    else if (score >= 75) { gameSpeed = 13.0 + (score - 75) * 0.06; }
+    else if (score >= 65) { gameSpeed = 12.0 + (score - 65) * 0.1; }
+    else if (score >= 55) { gameSpeed = 11.0 + (score - 55) * 0.1; }
+    else if (score >= 40) { gameSpeed = 10.0 + (score - 40) * 0.06; }
+    else if (score >= 30) { gameSpeed = 9.0 + (score - 30) * 0.1; }
+    else if (score >= 20) { gameSpeed = 8.0 + (score - 20) * 0.1; }
+    else if (score >= 15) { gameSpeed = 7.5 + (score - 15) * 0.1; }
+    else if (score >= 5) { gameSpeed = 6.5 + (score - 5) * 0.1; }
+    else { gameSpeed = 5.5 + score * 0.2; }
   }
 
   function triggerGameOver() {
@@ -628,6 +849,7 @@
   }
 
   function updateGame() {
+    if (isPaused) return;
     if (isGameOver) {
       drawGame();
       // Continue updating particles even when game over
@@ -687,7 +909,7 @@
 
     // Hover trail particles
     if (!player.isGrounded && frames % 4 === 0) {
-      let color = player.form === 'ssj' ? '#ffff55' : (player.form === 'kaioken' ? '#ff5555' : '#ffffff');
+      let color = getFormColor(player.form);
       let p = new Particle(player.x + 10, player.y + player.height - 5, color);
       p.vx = -gameSpeed / 2; // Move backwards
       p.vy = Math.random() * 2; // Move slightly down
