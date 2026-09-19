@@ -571,8 +571,8 @@
                glow:['rgba(79,195,255,0.65)','rgba(79,195,255,0)'], sparkChance:0.3, speedMult:1.85 },
     ssjbk:   { hair:'#4fc3ff', eye:'#ffb3b3', auraColors:['#4fc3ff','#ff4d4d','#bdf0ff'],
                glow:['rgba(255,60,60,0.55)','rgba(79,195,255,0.45)'], sparkChance:0.6, speedMult:1.95, dual:true },
-    ui:      { hair:'#cfd2e8', eye:'#b8b8ff', auraColors:['#cfd2e8','#9ea3ff','#ffffff'],
-               glow:['rgba(180,185,255,0.55)','rgba(180,185,255,0)'], sparkChance:0.4, speedMult:2.1 },
+    ui:      { hair:'#46464f', eye:'#cfd2d8', auraColors:['#8a8a9e','#c4c4d2','#ffffff'],
+               glow:['rgba(160,160,180,0.4)','rgba(160,160,180,0)'], sparkChance:0.4, speedMult:2.1 },
     mui:     { hair:'#e8e6ff', eye:'#c88bff', auraColors:['#e8e6ff','#c88bff','#8f6bff'],
                glow:['rgba(200,150,255,0.68)','rgba(15,8,30,0.45)'], sparkChance:0.7, speedMult:2.3, darkOutline:true }
   };
@@ -1002,6 +1002,18 @@
       }
     }
 
+    // ---- SSJ4 tail (drawn behind the legs) ----
+    if(style.fur){
+      var tailFur = '#8a3b1e';
+      var tailTip = '#c1391b';
+      ctx.fillStyle = tailFur;
+      ctx.fillRect(9, 23, 3, 3);
+      ctx.fillRect(6, 25, 3, 3);
+      ctx.fillRect(5, 28, 3, 3);
+      ctx.fillStyle = tailTip;
+      ctx.fillRect(7, 30, 3, 3);
+    }
+
     // ---- legs ----
     var legOffset = Math.round(legSwing*3);
     // back leg
@@ -1077,18 +1089,34 @@
       ctx.fillRect(22, -3, 3, 5);
     }
     if(style.longHair){
-      // trailing strands down the back (SSJ3-style)
-      ctx.fillRect(21, 3, 3, 16);
-      ctx.fillRect(23, 8, 2, 12);
+      // hair grows from the BACK of the head, trailing down past the shoulders
+      ctx.fillRect(3, 9, 2, 17);
+      ctx.fillRect(21, 9, 2, 17);
+      ctx.fillRect(2, 24, 2, 6);
+      ctx.fillRect(22, 24, 2, 6);
     }
     if(style.fur){
-      // fur-trimmed silhouette (SSJ4-style)
+      var furCol = '#c1391b';
+      var furDark = '#8a2213';
+      // shoulder/head fur tufts
+      ctx.fillStyle = furCol;
       ctx.fillRect(3, -2, 3, 4);
       ctx.fillRect(20, -4, 3, 4);
-      ctx.fillStyle = '#ffcf4d';
-      ctx.fillRect(9, 24, 4, 2);
-      ctx.fillRect(15, 24, 4, 2);
-      ctx.fillStyle = haircol;
+      // torn gi hem (jagged rip along the bottom edge)
+      ctx.fillStyle = bootcol;
+      ctx.fillRect(7, 25, 2, 2);
+      ctx.fillRect(11, 26, 2, 2);
+      ctx.fillRect(15, 25, 2, 2);
+      ctx.fillRect(18, 26, 2, 2);
+      // exposed red fur chest (shirt ripped open)
+      ctx.fillStyle = furCol;
+      ctx.fillRect(10, 15, 6, 8);
+      ctx.fillStyle = furDark;
+      ctx.fillRect(12, 15, 2, 8);
+      // fur cuffs at the wrists
+      ctx.fillStyle = furCol;
+      ctx.fillRect(2, 21 - Math.max(armOffset,0), 5, 2);
+      ctx.fillRect(19, 21 + Math.max(-armOffset,0), 5, 2);
     }
 
     ctx.restore();
