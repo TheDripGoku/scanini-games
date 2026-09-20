@@ -62,6 +62,13 @@
     font-weight: bold;
     text-shadow: 2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000;
   }
+  #high-score-display {
+    color: #ffcc00;
+    font-size: 18px;
+    font-weight: bold;
+    text-shadow: 2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000;
+    margin-top: 5px;
+  }
   #message-display {
     color: #ffd700;
     font-size: 20px;
@@ -192,6 +199,7 @@
 
   <div id="ui">
     <div id="score-display">Score: 0</div>
+    <div id="high-score-display">Best: 0</div>
     <div id="message-display">KAIOKEN!</div>
   </div>
   
@@ -309,6 +317,7 @@
   const canvas = document.getElementById('gameCanvas');
   const ctx = canvas.getContext('2d');
   const scoreDisplay = document.getElementById('score-display');
+  const highScoreDisplay = document.getElementById('high-score-display');
   const messageDisplay = document.getElementById('message-display');
   const gameOverScreen = document.getElementById('game-over');
   const finalScoreDisplay = document.getElementById('final-score');
@@ -326,6 +335,7 @@
   let frames = 0;
   let nextSpawnFrame = 130;
   let score = 0;
+  let bestScore = parseInt(localStorage.getItem('gokuRunnerBestScore')) || 0;
   let gameSpeed = 5;
   let isGameOver = false;
   let isPaused = false;
@@ -759,6 +769,7 @@
     
     gameOverScreen.style.display = 'none';
     scoreDisplay.innerText = 'Score: 0';
+    highScoreDisplay.innerText = 'Best: ' + bestScore;
     messageDisplay.style.opacity = 0;
     
     isPaused = false;
@@ -797,10 +808,10 @@
           player.x + player.width - padding > obs.x &&
           player.y + padding < obs.y + obs.height &&
           player.y + player.height - padding > obs.y) {
-          triggerGameOver();
+        triggerGameOver();
       }
 
-      // Check pass to increment score
+      // Pass logic for score
       if (obs.x + obs.width < player.x && !obs.passed) {
         obs.passed = true;
         score++;
@@ -819,6 +830,11 @@
   }
 
   function updateDifficulty() {
+    if (score > bestScore) {
+      bestScore = score;
+      localStorage.setItem('gokuRunnerBestScore', bestScore);
+      highScoreDisplay.innerText = 'Best: ' + bestScore;
+    }
     scoreDisplay.innerText = 'Score: ' + score;
     
     if (score >= 130) { gameSpeed = 16.0 + (score - 130) * 0.1; }
