@@ -437,7 +437,7 @@
         case 'ssjb': auraColor = 'rgba(50, 150, 255, 0.6)'; hairColor = '#00ccff'; hairStyle = 'ssj'; break;
         case 'ssjbk': auraColor = 'rgba(255, 30, 30, 0.5)'; hairColor = '#00ccff'; hairStyle = 'ssj'; sparkChance = 0.1; break;
         case 'ui': auraColor = 'rgba(200, 200, 255, 0.5)'; hairColor = '#333333'; hairStyle = 'normal'; break;
-        case 'mui': auraColor = 'rgba(255, 255, 255, 0.8)'; hairColor = '#ffffff'; hairStyle = 'ssj2'; sparkChance = 0.3; break;
+        case 'mui': auraColor = 'rgba(255, 255, 255, 0.8)'; hairColor = '#ffffff'; hairStyle = 'mui'; sparkChance = 0.3; break;
       }
 
       // Draw Aura
@@ -478,9 +478,8 @@
       // Hair
       ctx.fillStyle = hairColor;
       ctx.beginPath();
-      if (hairStyle === 'ssj' || hairStyle === 'ssj2' || hairStyle === 'mui') {
+      if (hairStyle === 'ssj' || hairStyle === 'ssj2') {
         let spikeH = hairStyle === 'ssj2' ? 25 : 18;
-        if(hairStyle==='mui') spikeH = 22;
         ctx.moveTo(this.x, this.y + 12);
         ctx.lineTo(this.x - 8, this.y - 8);
         ctx.lineTo(this.x + 5, this.y + 2);
@@ -490,6 +489,15 @@
         ctx.lineTo(this.x + 26, this.y + 2);
         ctx.lineTo(this.x + 40, this.y - 8);
         ctx.lineTo(this.x + 32, this.y + 12);
+      } else if (hairStyle === 'mui') {
+        // Bigger version of normal UI hair, white color
+        ctx.moveTo(this.x - 4, this.y + 14);
+        ctx.lineTo(this.x - 18, this.y);
+        ctx.lineTo(this.x + 2, this.y);
+        ctx.lineTo(this.x + 12, this.y - 12);
+        ctx.lineTo(this.x + 22, this.y);
+        ctx.lineTo(this.x + 40, this.y + 2);
+        ctx.lineTo(this.x + 32, this.y + 14);
       } else if (hairStyle === 'ssj3') {
         ctx.moveTo(this.x + 12, this.y + 10);
         ctx.lineTo(this.x + 5, this.y - 10);
